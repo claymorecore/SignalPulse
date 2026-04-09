@@ -1,0 +1,21 @@
+{
+  "name": "signalpulse",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run start",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server run start"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "jest": "^30.3.0",
+    "terser-brunch": "^4.1.0"
+  },
+  "dependencies": {
+    "eslint-plugin-react-hooks": "^7.1.0-canary-9627b5a1-20260327"
+  }
+}
