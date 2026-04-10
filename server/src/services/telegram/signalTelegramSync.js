@@ -93,6 +93,21 @@ export const createSignalTelegramSync = ({
     await telegramStore.upsert(record);
   };
 
+  const clearPendingState = async (signalKey) => {
+    desired.delete(signalKey);
+    clearScheduled(signalKey);
+
+    const record = records.get(signalKey);
+    if (!record) return;
+
+    await persistRecord({
+      ...record,
+      pendingText: null,
+      retryCount: 0,
+      nextRetryTs: null
+    });
+  };
+
   const clearScheduled = (signalKey) => {
     const timer = timers.get(signalKey);
     if (timer) {
@@ -309,7 +324,23 @@ export const createSignalTelegramSync = ({
     },
 
     async stop() {
-      for (const signalKey of timers.keys()) clearScheduled(signalKey);
+      await this.purgeQueue();
+    },
+
+    async purgeQueue({ signalKeys = null } = {}) {
+      const keys = signalKeys && Array.isArray(signalKeys)
+        ? signalKeys.map((key) => String(key || "")).filter(Boolean)
+        : Array.from(new Set([
+            ...desired.keys(),
+            ...timers.keys(),
+            ...Array.from(records.values())
+              .filter((record) => record?.pendingText || record?.nextRetryTs)
+              .map((record) => record.signalKey)
+          ]));
+
+      for (const signalKey of keys) {
+        await clearPendingState(signalKey);
+      }
     },
 
     async onSignalUpsert(signal, { existed = false } = {}) {

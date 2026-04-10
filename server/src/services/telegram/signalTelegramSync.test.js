@@ -327,3 +327,50 @@ test("signalTelegramSync does not create a duplicate message when an update arri
   assert.equal(edited.length, 1);
   assert.equal(edited[0].messageId, 999);
 });
+
+test("signalTelegramSync purgeQueue drops pending sends and retries on stop/reset", async () => {
+  const sent = [];
+  const scheduled = [];
+  let timerId = 0;
+
+  const sync = createSignalTelegramSync({
+    token: "token",
+    chatId: "-100123",
+    telegramStore: createStore(),
+    telegramService: {
+      enabled: true,
+      async sendMessage(text) {
+        sent.push(text);
+        return { message_id: 1234 };
+      },
+      async editMessageText() {
+        return { ok: true };
+      },
+      isNotModifiedError() {
+        return false;
+      },
+      isEditGoneError() {
+        return false;
+      }
+    },
+    logger: createLogger(),
+    setTimer(fn, delayMs) {
+      const timer = { id: ++timerId, fn, delayMs };
+      scheduled.push(timer);
+      return timer;
+    },
+    clearTimer(timer) {
+      const index = scheduled.findIndex((entry) => entry.id === timer?.id);
+      if (index >= 0) scheduled.splice(index, 1);
+    }
+  });
+
+  await sync.start();
+  await sync.onSignalUpsert(baseSignal(), { existed: false });
+
+  assert.equal(scheduled.length, 1);
+  await sync.purgeQueue();
+
+  assert.equal(scheduled.length, 0);
+  assert.equal(sent.length, 0);
+});
