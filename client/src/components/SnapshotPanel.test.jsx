@@ -36,8 +36,7 @@ describe("SnapshotPanel", () => {
     render(<SnapshotPanel signal={null} />);
     expect(screen.getByText("Snapshot")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 3 })).toBeInTheDocument();
-    // Prüfen, dass die canvas existiert
-    expect(document.querySelector(".canvas canvas")).toBeInTheDocument();
+    expect(document.querySelector(".canvas canvas")).not.toBeInTheDocument();
   });
 
   it("renders all key-value pairs for a signal", () => {
@@ -83,8 +82,8 @@ describe("SnapshotPanel", () => {
     expect(screen.getAllByText("–").length).toBeGreaterThan(0);
   });
 
-  it("renders canvas even with signal", () => {
+  it("does not render the removed lower snapshot canvas", () => {
     render(<SnapshotPanel signal={sampleSignal} refNow={1000} />);
-    expect(document.querySelector(".canvas canvas")).toBeInTheDocument();
+    expect(document.querySelector(".canvas canvas")).not.toBeInTheDocument();
   });
 });

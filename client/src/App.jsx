@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import useNow from "./hooks/useNow.js";
 import useLogger from "./hooks/useLogger.js";
 import useSignalStore from "./hooks/useSignalStore.js";
 import useSnapshotFeed from "./hooks/useSnapshotFeed.js";
 import { apiPost } from "./lib/api.js";
+import { getActivityHelperText, translateLogRows } from "./lib/activityFeed.js";
 
 import Badges from "./components/Badges.jsx";
 import ControlPanel from "./components/ControlPanel.jsx";
@@ -17,9 +18,15 @@ export default function App() {
   const tNow = useNow(1000);
   const log = useLogger(700);
   const { state, applySnapshot, select, clearSelect, selected } = useSignalStore();
+  const prevStateRef = useRef({ status: state.status, signals: state.signals });
   const scannerIsActive = useMemo(
     () => ["running", "started", "scanning"].includes(String(state.status).toLowerCase()),
     [state.status]
+  );
+  const activityRows = useMemo(() => translateLogRows(log.rows), [log.rows]);
+  const activityHelperText = useMemo(
+    () => getActivityHelperText({ status: state.status, session: state.session, activityRows, now: tNow }),
+    [state.status, state.session, activityRows, tNow]
   );
 
   const onSnapshot = useCallback((snap) => { applySnapshot(snap); }, [applySnapshot]);
@@ -31,6 +38,41 @@ export default function App() {
   }, []);
 
   useSnapshotFeed({ onSnapshot, pollMs: 1200, wsUrl });
+
+  useEffect(() => {
+    const previous = prevStateRef.current;
+    const prevStatus = String(previous.status || "").toLowerCase();
+    const nextStatus = String(state.status || "").toLowerCase();
+
+    if (prevStatus !== nextStatus) {
+      if (!["running", "started", "scanning"].includes(prevStatus) && ["running", "started", "scanning"].includes(nextStatus)) {
+        log.push("INFO", "scanner running", { status: state.status });
+      } else if (["running", "started", "scanning"].includes(prevStatus) && ["idle", "stopped"].includes(nextStatus)) {
+        log.push("INFO", "scanner stopped", { status: state.status });
+      }
+    }
+
+    const prevSignals = new Map((previous.signals || []).map((signal) => [signal.key, signal]));
+    const nextSignals = new Map((state.signals || []).map((signal) => [signal.key, signal]));
+
+    nextSignals.forEach((signal, key) => {
+      if (!prevSignals.has(key)) {
+        log.push("INFO", "signal generated", { symbol: signal.symbol, side: signal.side });
+      }
+    });
+
+    if (scannerIsActive && prevSignals.size === nextSignals.size && nextSignals.size > 0) {
+      log.push("INFO", "market cycle", { signals: nextSignals.size });
+    }
+
+    prevSignals.forEach((signal, key) => {
+      if (!nextSignals.has(key) && scannerIsActive) {
+        log.push("INFO", "signal closed", { symbol: signal.symbol });
+      }
+    });
+
+    prevStateRef.current = { status: state.status, signals: state.signals };
+  }, [state.status, state.signals, scannerIsActive, log]);
 
   const onStart = useCallback(async (cfg) => {
     if (scannerIsActive) return;
@@ -83,7 +125,6 @@ export default function App() {
         <ControlPanel
           onStart={onStart}
           onReset={onReset}
-          onExportLogs={log.exportJsonl}
           disabledStart={disabledStart}
           disabledStop={disabledStop}
         />
@@ -100,14 +141,18 @@ export default function App() {
           <div className="logWrap">
             <div className="logTop">
               <span>Logs</span>
-              <span className="mini">
-                req:{log.summary.req} ok:{log.summary.ok} 429:{log.summary.s429} 5xx:{log.summary.s5xx} err:{log.summary.err} | p50:{log.summary.p50 ?? "–"} p95:{log.summary.p95 ?? "–"}
-              </span>
+              <span className="mini">{activityHelperText}</span>
             </div>
             <div className="log">
-              {log.rows.slice().reverse().map((r,i) => (
+              {activityRows.slice().reverse().map((r,i) => (
                 <div key={i} className="mini mono" style={{ opacity: 0.92 }}>
-                  [{new Date(r.t).toLocaleTimeString()}] {r.lvl} {r.msg} {r.meta ? JSON.stringify(r.meta) : ""}
+                  [{new Date(r.t).toLocaleTimeString()}] {r.title}
+                  {r.detail ? (
+                    <>
+                      <br />
+                      <span>{r.detail}</span>
+                    </>
+                  ) : null}
                 </div>
               ))}
             </div>

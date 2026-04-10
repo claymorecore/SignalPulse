@@ -56,11 +56,6 @@ const SnapshotPanel = memo(function SnapshotPanel({ signal, refNow }) {
         )}
       </div>
 
-      <div style={{ height: 10 }} />
-
-      <div className="canvas">
-        <canvas></canvas>
-      </div>
     </div>
   );
 });

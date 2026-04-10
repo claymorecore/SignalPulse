@@ -7,28 +7,24 @@ describe("ControlPanel component", () => {
   test("renders all form inputs with default values", () => {
     render(<ControlPanel />);
 
-    // Eindeutige Werte → ok mit getByDisplayValue
     expect(screen.getByDisplayValue("40")).toBeInTheDocument(); // Universe Size
-    expect(screen.getByDisplayValue("8")).toBeInTheDocument();  
-    expect(screen.getByDisplayValue("140")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("45")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("120")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("34")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("144")).toBeInTheDocument();
     expect(screen.getByDisplayValue("14")).toBeInTheDocument();
     expect(screen.getByDisplayValue("1.5")).toBeInTheDocument();
     expect(screen.getByDisplayValue("2")).toBeInTheDocument();
     expect(screen.getByDisplayValue("1")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("180")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("6500")).toBeInTheDocument();
-
-    // ❗ Doppelte Werte → über Labels prüfen
     expect(screen.getByLabelText(/Risk Mult/i)).toHaveValue(3);
-    expect(screen.getByLabelText(/Live PnL poll/i)).toHaveValue(3);
-
-    // Select
     const usePriceSelect = screen.getByLabelText(/Use Price/i);
     expect(usePriceSelect.value).toBe("mark");
+    expect(screen.queryByLabelText(/Scan Batch/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Throttle per symbol/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/TF 1m tick/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/TF 5m tick/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/EMA fast/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/EMA slow/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Live PnL poll/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Klines backfill/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Per-symbol TF cooldown/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Export Logs/i })).not.toBeInTheDocument();
   });
 
   test("Start button triggers onStart", () => {

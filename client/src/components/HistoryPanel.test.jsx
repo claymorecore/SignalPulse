@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import HistoryPanel from "./HistoryPanel.jsx";
 
 // Mock für SparkCanvas (damit Canvas kein Problem macht)
-jest.mock("./SparkCanvas.jsx", () => () => <div data-testid="spark" />);
+const mockSparkCanvas = jest.fn(() => <div data-testid="spark" />);
+jest.mock("./SparkCanvas.jsx", () => (props) => mockSparkCanvas(props));
 
 describe("HistoryPanel", () => {
   const mockNow = Date.now();
@@ -30,6 +31,28 @@ describe("HistoryPanel", () => {
   test("renders SparkCanvas", () => {
     render(<HistoryPanel signal={mockSignal} refNow={mockNow} />);
     expect(screen.getByTestId("spark")).toBeInTheDocument();
+  });
+
+  test("passes green sparkline colors for non-negative pnl", () => {
+    render(<HistoryPanel signal={{ ...mockSignal, pnlPct: 0.25 }} refNow={mockNow} />);
+
+    expect(mockSparkCanvas.mock.calls.at(-1)[0]).toEqual(
+      expect.objectContaining({
+        lineColor: "#4caf50",
+        fillColor: "rgba(76, 175, 80, 0.12)"
+      })
+    );
+  });
+
+  test("passes red sparkline colors for negative pnl", () => {
+    render(<HistoryPanel signal={{ ...mockSignal, pnlPct: -0.25 }} refNow={mockNow} />);
+
+    expect(mockSparkCanvas.mock.calls.at(-1)[0]).toEqual(
+      expect.objectContaining({
+        lineColor: "#ff8585",
+        fillColor: "rgba(255, 133, 133, 0.12)"
+      })
+    );
   });
 
   test("handles empty history", () => {

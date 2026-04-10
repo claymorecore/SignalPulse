@@ -10,8 +10,8 @@ const Badges = memo(function Badges({
   signalsCount
 }) {
   const badgeData = useMemo(() => [
-    { label: "status", value: status || "–", className: "strong" },
     { label: "session", value: session || "–" },
+    { label: "status", value: status || "–", className: "strong" },
     { label: "universe", value: formatCount(universeCount) },
     { label: "signals", value: formatCount(signalsCount) }
   ], [status, session, universeCount, signalsCount]);

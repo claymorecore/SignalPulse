@@ -73,7 +73,6 @@ const toCanonicalPayload = (cfg) => ({
 const ControlPanel = memo(function ControlPanel({
   onStart,
   onReset,
-  onExportLogs,
   disabledStart,
   disabledStop
 }) {
@@ -130,77 +129,6 @@ const ControlPanel = memo(function ControlPanel({
         value={cfg.universe.size}
         onChange={e => setValue("universe", "size", e.target.value)}
       />
-
-      {/* Scan & Throttle */}
-      <div className="row">
-        <div>
-          <label htmlFor="scanBatch">Scan Batch (symbols/tick)</label>
-          <input
-            id="scanBatch"
-            type="number"
-            min="1"
-            max="80"
-            value={cfg.scan.batch}
-            onChange={e => setValue("scan", "batch", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="throttleMs">Throttle per symbol (ms)</label>
-          <input
-            id="throttleMs"
-            type="number"
-            min="0"
-            value={cfg.scan.throttleMs}
-            onChange={e => setValue("scan", "throttleMs", e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Timeframes */}
-      <div className="row">
-        <div>
-          <label htmlFor="tick1m">TF 1m tick (sec)</label>
-          <input
-            id="tick1m"
-            type="number"
-            min="10"
-            value={cfg.timeframe.tick1mSec}
-            onChange={e => setValue("timeframe", "tick1mSec", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="tick5m">TF 5m tick (sec)</label>
-          <input
-            id="tick5m"
-            type="number"
-            min="30"
-            value={cfg.timeframe.tick5mSec}
-            onChange={e => setValue("timeframe", "tick5mSec", e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Indicators */}
-      <div className="row">
-        <div>
-          <label htmlFor="emaFast">EMA fast</label>
-          <input
-            id="emaFast"
-            type="number"
-            value={cfg.indicators.emaFast}
-            onChange={e => setValue("indicators", "emaFast", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="emaSlow">EMA slow</label>
-          <input
-            id="emaSlow"
-            type="number"
-            value={cfg.indicators.emaSlow}
-            onChange={e => setValue("indicators", "emaSlow", e.target.value)}
-          />
-        </div>
-      </div>
 
       <div className="row">
         <div>
@@ -259,55 +187,15 @@ const ControlPanel = memo(function ControlPanel({
         </div>
       </div>
 
-      {/* Live & Price */}
-      <div className="row">
-        <div>
-          <label htmlFor="pnlPoll">Live PnL poll (sec)</label>
-          <input
-            id="pnlPoll"
-            type="number"
-            min="1"
-            value={cfg.live.pnlPollSec}
-            onChange={e => setValue("live", "pnlPollSec", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="usePrice">Use Price</label>
-          <select
-            id="usePrice"
-            value={cfg.price.mode}
-            onChange={e => setValue("price", "mode", e.target.value)}
-          >
-            <option value="mark">mark (premiumIndex bulk)</option>
-            <option value="last">last (ticker/price bulk)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Scan Backfill & Cooldown */}
-      <div className="row">
-        <div>
-          <label htmlFor="backfill">Klines backfill</label>
-          <input
-            id="backfill"
-            type="number"
-            min="80"
-            max="800"
-            value={cfg.scan.backfill}
-            onChange={e => setValue("scan", "backfill", e.target.value)}
-          />
-        </div>
-        <div>
-          <label htmlFor="cooldown">Per-symbol TF cooldown (ms)</label>
-          <input
-            id="cooldown"
-            type="number"
-            min="200"
-            value={cfg.scan.symbolCooldownMs}
-            onChange={e => setValue("scan", "symbolCooldownMs", e.target.value)}
-          />
-        </div>
-      </div>
+      <label htmlFor="usePrice">Use Price</label>
+      <select
+        id="usePrice"
+        value={cfg.price.mode}
+        onChange={e => setValue("price", "mode", e.target.value)}
+      >
+        <option value="mark">mark (premiumIndex bulk)</option>
+        <option value="last">last (ticker/price bulk)</option>
+      </select>
 
       {/* Buttons */}
       <div className="btns">
@@ -319,9 +207,6 @@ const ControlPanel = memo(function ControlPanel({
         </button>
         <button className="ghost" onClick={resetLocalDefaults}>
           Reset Form
-        </button>
-        <button className="ghost" onClick={() => onExportLogs?.()}>
-          Export Logs
         </button>
       </div>
     </section>

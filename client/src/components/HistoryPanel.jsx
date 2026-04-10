@@ -26,6 +26,19 @@ const HistoryPanel = memo(function HistoryPanel({ signal, refNow }) {
     return value > 0 ? "pnl-positive" : value < 0 ? "pnl-negative" : "";
   };
 
+  const sparklineColors = useMemo(() => {
+    const isNegative = Number(signal?.pnlPct) < 0;
+    return isNegative
+      ? {
+          lineColor: "#ff8585",
+          fillColor: "rgba(255, 133, 133, 0.12)"
+        }
+      : {
+          lineColor: "#4caf50",
+          fillColor: "rgba(76, 175, 80, 0.12)"
+        };
+  }, [signal?.pnlPct]);
+
   return (
     <div className="panel">
       <h3>History (selected signal)</h3>
@@ -64,7 +77,13 @@ const HistoryPanel = memo(function HistoryPanel({ signal, refNow }) {
       </div>
 
       <div className="canvas">
-        <SparkCanvas history={history} entry={signal?.entry} side={signal?.side} />
+        <SparkCanvas
+          history={history}
+          entry={signal?.entry}
+          side={signal?.side}
+          lineColor={sparklineColors.lineColor}
+          fillColor={sparklineColors.fillColor}
+        />
       </div>
     </div>
   );

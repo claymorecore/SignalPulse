@@ -83,6 +83,19 @@ describe("SparkCanvas", () => {
     expect(secondY).toBeLessThan(firstY);
   });
 
+  it("applies provided line and fill colors", () => {
+    render(
+      <SparkCanvas
+        history={[{ p: 100, pp: 0 }, { p: 105, pp: 5 }]}
+        lineColor="#ff8585"
+        fillColor="rgba(255, 133, 133, 0.12)"
+      />
+    );
+
+    expect(ctxMock.strokeStyle).toBe("#ff8585");
+    expect(ctxMock.fillStyle).toBe("rgba(255, 133, 133, 0.12)");
+  });
+
   it("handles width and height props", () => {
     const { container } = render(<SparkCanvas width={300} height={100} />);
     const canvas = container.querySelector("canvas");
