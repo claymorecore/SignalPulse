@@ -49,6 +49,7 @@ export const createSignalTelegramSync = ({
   const records = new Map();
   const desired = new Map();
   const timers = new Map();
+  const processing = new Set();
   let outboundLock = Promise.resolve();
   let nextRequestAt = 0;
   let initPromise = null;
@@ -148,8 +149,15 @@ export const createSignalTelegramSync = ({
       retryCount: 0,
       nextRetryTs: null
     };
-    desired.delete(signalKey);
     await persistRecord(nextRecord);
+
+    const currentDesired = desired.get(signalKey);
+    if (currentDesired && currentDesired.revision !== payload.revision) {
+      schedule(signalKey, 0);
+      return;
+    }
+
+    desired.delete(signalKey);
   };
 
   const handleFailure = async (signalKey, record, target, error) => {
@@ -184,6 +192,7 @@ export const createSignalTelegramSync = ({
 
     const target = desired.get(signalKey);
     if (!target) return;
+    if (processing.has(signalKey)) return;
 
     const record = records.get(signalKey) || createEmptyRecord(signalKey);
     const currentTs = nowFn();
@@ -198,6 +207,7 @@ export const createSignalTelegramSync = ({
       return;
     }
 
+    processing.add(signalKey);
     try {
       if (!record.telegramMessageId) {
         const message = await runTelegramRequest(() => telegramService.sendMessage(target.text));
@@ -235,6 +245,8 @@ export const createSignalTelegramSync = ({
       }
     } catch (error) {
       await handleFailure(signalKey, record, target, error);
+    } finally {
+      processing.delete(signalKey);
     }
   };
 
@@ -247,10 +259,17 @@ export const createSignalTelegramSync = ({
     const hash = hashText(text);
     const status = String(signal.status || "");
     const record = records.get(signalKey) || createEmptyRecord(signalKey);
+    const currentDesired = desired.get(signalKey);
 
     if (!force && record.lastSentHash === hash && record.status === status) return;
+    if (!force && currentDesired && currentDesired.hash === hash && currentDesired.status === status) return;
 
-    desired.set(signalKey, { text, hash, status });
+    desired.set(signalKey, {
+      text,
+      hash,
+      status,
+      revision: Number(currentDesired?.revision || 0) + 1
+    });
 
     const shouldSendImmediately = !record.telegramMessageId || status !== OPEN_STATUS;
     const lastTs = Number(record.lastUpdateTs || 0);
@@ -263,6 +282,7 @@ export const createSignalTelegramSync = ({
       pendingText: text
     };
     await persistRecord(nextRecord);
+    if (processing.has(signalKey)) return;
     schedule(signalKey, delayMs);
   };
 

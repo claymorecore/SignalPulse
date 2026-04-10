@@ -12,8 +12,6 @@ import SignalsTable from "./components/SignalsTable.jsx";
 import HistoryPanel from "./components/HistoryPanel.jsx";
 import SnapshotPanel from "./components/SnapshotPanel.jsx";
 
-import './App.css';
-
 export default function App() {
   const tNow = useNow(1000);
   const log = useLogger(700);
@@ -80,7 +78,7 @@ export default function App() {
     if (scannerIsActive) return;
 
     try {
-      log.push("INFO", "scanner initializing", cfg);
+      log.push("INFO", "scanner initializing");
       const r = await apiPost("/api/scanner/start", cfg);
       log.push("OK", "scanner ready", r);
     } catch (e) {
@@ -90,7 +88,6 @@ export default function App() {
 
   const onReset = useCallback(async () => {
     try {
-      log.push("WARN", "scanner reset", {});
       const r = await apiPost("/api/scanner/reset", {});
       log.push("OK", "scanner reset", r);
       clearSelect();

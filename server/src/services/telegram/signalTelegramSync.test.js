@@ -274,3 +274,56 @@ test("signalTelegramSync serializes outbound sends with a global request gap", a
   assert.equal(sendTimes.length, 2);
   assert.ok(sendTimes[1] - sendTimes[0] >= 30);
 });
+
+test("signalTelegramSync does not create a duplicate message when an update arrives during the first send", async () => {
+  const sent = [];
+  const edited = [];
+  let releaseSend;
+
+  const sync = createSignalTelegramSync({
+    token: "token",
+    chatId: "-100123",
+    telegramStore: createStore(),
+    telegramService: {
+      enabled: true,
+      async sendMessage(text) {
+        sent.push(text);
+        await new Promise((resolve) => {
+          releaseSend = resolve;
+        });
+        return { message_id: 999 };
+      },
+      async editMessageText(messageId, text) {
+        edited.push({ messageId, text });
+        return { ok: true };
+      },
+      isNotModifiedError() {
+        return false;
+      },
+      isEditGoneError() {
+        return false;
+      }
+    },
+    logger: createLogger(),
+    minRequestGapMs: 0
+  });
+
+  await sync.start();
+  const first = sync.onSignalUpsert(baseSignal(), { existed: false });
+  while (typeof releaseSend !== "function") {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  const second = sync.onSignalUpsert(
+    { ...baseSignal(), live: 102, pnlPct: 2, pnlUsdt: 10 },
+    { existed: true }
+  );
+
+  releaseSend();
+  await first;
+  await second;
+  await new Promise((resolve) => setTimeout(resolve, 25));
+
+  assert.equal(sent.length, 1);
+  assert.equal(edited.length, 1);
+  assert.equal(edited[0].messageId, 999);
+});

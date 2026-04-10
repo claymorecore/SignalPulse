@@ -134,13 +134,10 @@ export const translateLogRows = (rows) => {
   }, []);
 };
 
-export const getActivityHelperText = ({ status, session, activityRows, now }) => {
+export const getActivityHelperText = ({ status, session, activityRows }) => {
   const normalizedStatus = cleanText(status).toLowerCase();
   const isActive = ACTIVE_STATUSES.has(normalizedStatus);
   const hasSession = cleanText(session) && cleanText(session) !== "-";
-  const lastActivityTs = Array.isArray(activityRows) && activityRows.length
-    ? activityRows[activityRows.length - 1].t
-    : null;
 
   if (isActive) {
     return "Live scanning in progress";

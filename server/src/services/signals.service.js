@@ -107,8 +107,8 @@ export async function updateLive(sig, price, qty, { emit = true } = {}) {
   });
 
   // Limit history length
-  if (sig.history.length > 300) {
-    sig.history.splice(0, sig.history.length - 300);
+  if (sig.history.length > 240) {
+    sig.history.splice(0, sig.history.length - 240);
   }
 
   updateLifecycle(sig, price);
