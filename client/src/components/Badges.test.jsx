@@ -27,7 +27,7 @@ describe('Badges component', () => {
     expect(screen.getByText(/signals: 10/i)).toBeInTheDocument();
   });
 
-  test('renders pills in session-first order', () => {
+  test('renders pills with status as the final rightmost pill', () => {
     render(
       <Badges
         status="online"
@@ -40,9 +40,9 @@ describe('Badges component', () => {
     const badgeTexts = screen.getAllByText(/:/i).map((node) => node.textContent);
     expect(badgeTexts.slice(0, 4)).toEqual([
       'session: abc123',
-      'status: online',
       'universe: 5',
-      'signals: 10'
+      'signals: 10',
+      'status: online'
     ]);
   });
 });
