@@ -6,14 +6,14 @@ describe("translateLogRows", () => {
       {
         t: 1,
         lvl: "INFO",
-        msg: "scanner start",
+        msg: "scanner initializing",
         meta: { strategy: "EMA_ATR", universe: { size: 40 } }
       },
       {
         t: 2,
         lvl: "OK",
-        msg: "scanner started",
-        meta: { status: "running" }
+        msg: "scanner ready",
+        meta: { cfg: { strategy: "EMA_ATR", universe: { size: 40 } } }
       }
     ];
 
@@ -21,22 +21,22 @@ describe("translateLogRows", () => {
       {
         t: 1,
         lvl: "INFO",
-        title: "Scanner started",
-        detail: "Tracking 40 markets using EMA and volatility strategy."
+        title: "Initializing scanner",
+        detail: "Preparing market data and system state."
       },
       {
         t: 2,
         lvl: "OK",
-        title: "Live market scanning is now active",
-        detail: "The system is checking selected markets for new trade setups."
+        title: "Scanner ready",
+        detail: "Tracking 40 markets using EMA and volatility strategy."
       }
     ]);
   });
 
   it("deduplicates repeated identical display entries while keeping order", () => {
     const rows = [
-      { t: 1, lvl: "OK", msg: "scanner started", meta: {} },
-      { t: 2, lvl: "OK", msg: "scanner started", meta: {} },
+      { t: 1, lvl: "OK", msg: "scanner ready", meta: { cfg: { strategy: "EMA_ATR", universe: { size: 40 } } } },
+      { t: 2, lvl: "OK", msg: "scanner ready", meta: { cfg: { strategy: "EMA_ATR", universe: { size: 40 } } } },
       { t: 3, lvl: "WARN", msg: "scanner reset", meta: {} }
     ];
 
@@ -44,8 +44,8 @@ describe("translateLogRows", () => {
       {
         t: 2,
         lvl: "OK",
-        title: "Live market scanning is now active",
-        detail: "The system is checking selected markets for new trade setups."
+        title: "Scanner ready",
+        detail: "Tracking 40 markets using EMA and volatility strategy."
       },
       {
         t: 3,

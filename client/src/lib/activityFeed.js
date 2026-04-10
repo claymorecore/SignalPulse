@@ -36,17 +36,17 @@ const buildActivityEntry = (row) => {
   const lvl = toUpper(row?.lvl);
 
   switch (msg) {
-    case "scanner start":
+    case "scanner initializing":
       return normalizeDisplay({
-        title: "Scanner started",
-        detail: `Tracking ${meta?.universe?.size ?? "selected"} markets using ${formatStrategy(meta?.strategy)}.`
+        title: "Initializing scanner",
+        detail: "Preparing market data and system state."
       });
 
+    case "scanner ready":
     case "scanner started":
-    case "scanner running":
       return normalizeDisplay({
-        title: "Live market scanning is now active",
-        detail: "The system is checking selected markets for new trade setups."
+        title: "Scanner ready",
+        detail: `Tracking ${meta?.cfg?.universe?.size ?? meta?.universe?.size ?? "selected"} markets using ${formatStrategy(meta?.cfg?.strategy ?? meta?.strategy)}.`
       });
 
     case "scanner start failed":
@@ -80,17 +80,11 @@ const buildActivityEntry = (row) => {
         detail: "The current session could not be cleared yet. Please try again."
       });
 
-    case "market cycle":
-      return normalizeDisplay({
-        title: "Market data updated",
-        detail: "Scanning active markets for fresh price movement and setup changes."
-      });
-
     case "signal generated":
       return meta?.symbol
         ? normalizeDisplay({
-            title: "New signal detected",
-            detail: `${meta.symbol} - ${formatSide(meta.side)} setup identified.`
+          title: "New signal detected",
+          detail: `${meta.symbol} - ${formatSide(meta.side)} setup identified.`
           })
         : null;
 

@@ -10,7 +10,7 @@ const DEFAULT_CFG = {
   indicators: { emaFast: 34, emaSlow: 144, atrLen: 14, atrFactor: 1.5 },
   risk: { rrTarget: 2.0, qty: 1, riskMult: 3.0 },
   live: { pnlPollSec: 3 },
-  price: { mode: "mark" }
+  price: { mode: "last" }
 };
 
 // Merge partial config into defaults safely
@@ -67,7 +67,7 @@ const toCanonicalPayload = (cfg) => ({
     riskMult: Number(cfg.risk.riskMult)
   },
   live: { pnlPollSec: Number(cfg.live.pnlPollSec) },
-  price: { mode: String(cfg.price.mode || "mark") }
+  price: { mode: "last" }
 });
 
 const ControlPanel = memo(function ControlPanel({
@@ -186,16 +186,6 @@ const ControlPanel = memo(function ControlPanel({
           />
         </div>
       </div>
-
-      <label htmlFor="usePrice">Use Price</label>
-      <select
-        id="usePrice"
-        value={cfg.price.mode}
-        onChange={e => setValue("price", "mode", e.target.value)}
-      >
-        <option value="mark">mark (premiumIndex bulk)</option>
-        <option value="last">last (ticker/price bulk)</option>
-      </select>
 
       {/* Buttons */}
       <div className="btns">

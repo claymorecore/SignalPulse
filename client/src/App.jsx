@@ -45,9 +45,7 @@ export default function App() {
     const nextStatus = String(state.status || "").toLowerCase();
 
     if (prevStatus !== nextStatus) {
-      if (!["running", "started", "scanning"].includes(prevStatus) && ["running", "started", "scanning"].includes(nextStatus)) {
-        log.push("INFO", "scanner running", { status: state.status });
-      } else if (["running", "started", "scanning"].includes(prevStatus) && ["idle", "stopped"].includes(nextStatus)) {
+      if (["running", "started", "scanning"].includes(prevStatus) && ["idle", "stopped"].includes(nextStatus)) {
         log.push("INFO", "scanner stopped", { status: state.status });
       }
     }
@@ -60,10 +58,6 @@ export default function App() {
         log.push("INFO", "signal generated", { symbol: signal.symbol, side: signal.side });
       }
     });
-
-    if (scannerIsActive && prevSignals.size === nextSignals.size && nextSignals.size > 0) {
-      log.push("INFO", "market cycle", { signals: nextSignals.size });
-    }
 
     prevSignals.forEach((signal, key) => {
       if (!nextSignals.has(key) && scannerIsActive) {
@@ -78,9 +72,9 @@ export default function App() {
     if (scannerIsActive) return;
 
     try {
-      log.push("INFO", "scanner start", cfg);
+      log.push("INFO", "scanner initializing", cfg);
       const r = await apiPost("/api/scanner/start", cfg);
-      log.push("OK", "scanner started", r);
+      log.push("OK", "scanner ready", r);
     } catch (e) {
       log.push("ERR", "scanner start failed", { msg: e?.message || String(e), status: e?.status || null });
     }

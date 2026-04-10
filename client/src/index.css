@@ -124,6 +124,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .badge:hover { border-color: #ffffffaa; box-shadow: 0 2px 12px rgba(255,255,255,0.15); }
 .badge.strong { border-color: #fff; color: #fff; }
+.badge.push-end { margin-left: auto; }
 .badge.good { border-color: var(--good); color: var(--good); }
 .badge.bad { border-color: var(--bad); color: var(--bad); }
 

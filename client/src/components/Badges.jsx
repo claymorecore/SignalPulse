@@ -13,7 +13,7 @@ const Badges = memo(function Badges({
     { label: "session", value: session || "–" },
     { label: "status", value: status || "–", className: "strong" },
     { label: "universe", value: formatCount(universeCount) },
-    { label: "signals", value: formatCount(signalsCount) }
+    { label: "signals", value: formatCount(signalsCount), className: "push-end" }
   ], [status, session, universeCount, signalsCount]);
 
   return (

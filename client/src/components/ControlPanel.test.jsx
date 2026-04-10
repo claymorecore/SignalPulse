@@ -13,8 +13,6 @@ describe("ControlPanel component", () => {
     expect(screen.getByDisplayValue("2")).toBeInTheDocument();
     expect(screen.getByDisplayValue("1")).toBeInTheDocument();
     expect(screen.getByLabelText(/Risk Mult/i)).toHaveValue(3);
-    const usePriceSelect = screen.getByLabelText(/Use Price/i);
-    expect(usePriceSelect.value).toBe("mark");
     expect(screen.queryByLabelText(/Scan Batch/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Throttle per symbol/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/TF 1m tick/i)).not.toBeInTheDocument();
@@ -24,6 +22,7 @@ describe("ControlPanel component", () => {
     expect(screen.queryByLabelText(/Live PnL poll/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Klines backfill/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Per-symbol TF cooldown/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Use Price/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Export Logs/i })).not.toBeInTheDocument();
   });
 
@@ -41,7 +40,7 @@ describe("ControlPanel component", () => {
       indicators: { emaFast: 34, emaSlow: 144, atrLen: 14, atrFactor: 1.5 },
       risk: { rrTarget: 2, qty: 1, riskMult: 3 },
       live: { pnlPollSec: 3 },
-      price: { mode: "mark" }
+      price: { mode: "last" }
     });
   });
 
@@ -73,8 +72,6 @@ describe("ControlPanel component", () => {
     fireEvent.click(screen.getByRole("button", { name: /Reset Form/i }));
 
     expect(screen.getByDisplayValue("40")).toBeInTheDocument();
-
-    const usePriceSelect = screen.getByLabelText(/Use Price/i);
-    expect(usePriceSelect.value).toBe("mark");
+    expect(screen.queryByLabelText(/Use Price/i)).not.toBeInTheDocument();
   });
 });

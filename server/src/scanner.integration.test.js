@@ -176,7 +176,7 @@ const startPayload = {
   indicators: { emaFast: 5, emaSlow: 20, atrLen: 14, atrFactor: 1.2 },
   risk: { rrTarget: 1.8, qty: 1, riskMult: 1 },
   live: { pnlPollSec: 60 },
-  price: { mode: "mark" }
+  price: { mode: "last" }
 };
 
 test("scanner start route boots worker, populates market state, and persists signals", async () => {
@@ -397,7 +397,7 @@ test("worker start directly hydrates market state from mocked Binance responses"
     pnlPoll: 60,
     backfill: 120,
     symCd: 250,
-    pxMode: "mark"
+    pxMode: "last"
   });
 
   assert.equal(result.ok, true);

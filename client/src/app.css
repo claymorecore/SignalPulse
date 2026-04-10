@@ -66,6 +66,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 .badges { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; align-items: flex-start; }
 .badge { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--b); color: var(--m); background: #0c0c0c; transition: border-color 0.25s, color 0.25s; }
 .badge.strong { border-color: #fff; color: #fff; }
+.badge.push-end { margin-left: auto; }
 .badge.good { border-color: var(--good); color: var(--good); }
 .badge.bad { border-color: var(--bad); color: var(--bad); }
 
