@@ -11,8 +11,8 @@ const Badges = memo(function Badges({
 }) {
   const badgeData = useMemo(() => [
     { label: "session", value: session || "–" },
-    { label: "universe", value: formatCount(universeCount) },
     { label: "signals", value: formatCount(signalsCount) },
+    { label: "universe", value: formatCount(universeCount) },
     { label: "status", value: status || "–", className: "strong push-end" }
   ], [status, session, universeCount, signalsCount]);
 

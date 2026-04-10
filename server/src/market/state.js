@@ -2,6 +2,8 @@
 import env from "../config/env.js";
 import publisher from "./publisher.js";
 import dbmod from "../db/sqlite.js";
+import { log } from "../middleware/log.js";
+import signalTelegramSync from "../services/telegram/signalTelegramSync.js";
 
 /* -------------------- Helpers -------------------- */
 const now = () => Date.now();
@@ -29,6 +31,20 @@ const tfRank = (tf) => {
 const numOrNull = (v) => (Number.isFinite(+v) ? +v : null);
 const numOrNaN = (v) => (v == null ? NaN : +v);
 const strOrEmpty = (v) => (v == null ? "" : String(v));
+const ACTIVE_SIGNAL_STATUSES = new Set(["OPEN", "ACTIVE"]);
+const LOCKED_ACTIVE_FIELDS = [
+  "key",
+  "symbol",
+  "tf",
+  "setup",
+  "side",
+  "entry",
+  "sl",
+  "tp",
+  "rr",
+  "closeTime",
+  "createdAt"
+];
 
 /* -------------------- History Normalization -------------------- */
 const normalizeHistoryPoint = (p) => {
@@ -49,6 +65,20 @@ const normalizeHistory = (arr) =>
   Array.isArray(arr)
     ? arr.map(normalizeHistoryPoint).filter(Boolean).sort((a, b) => a.t - b.t)
     : [];
+
+const isActiveSignalStatus = (status) =>
+  ACTIVE_SIGNAL_STATUSES.has(String(status || "").trim().toUpperCase());
+
+const mergeActiveSignal = (existing, incoming) => {
+  const merged = {
+    ...existing,
+    ...incoming,
+    history: Array.isArray(incoming.history) ? incoming.history : existing.history
+  };
+
+  for (const field of LOCKED_ACTIVE_FIELDS) merged[field] = existing[field];
+  return merged;
+};
 
 /* -------------------- State -------------------- */
 const S = {
@@ -159,6 +189,39 @@ const clearSignalsDB = async () => {
   await dbmod.run("DELETE FROM signals");
 };
 
+const syncTelegramUpsert = async (signal, meta = {}) => {
+  try {
+    await signalTelegramSync.onSignalUpsert(signal, meta);
+  } catch (error) {
+    log.warn("TELEGRAM_SYNC_UPSERT_FAIL", {
+      key: signal?.key || null,
+      err: error?.message || String(error)
+    });
+  }
+};
+
+const syncTelegramRemoved = async (signal, meta = {}) => {
+  try {
+    await signalTelegramSync.onSignalRemoved(signal, meta);
+  } catch (error) {
+    log.warn("TELEGRAM_SYNC_REMOVE_FAIL", {
+      key: signal?.key || null,
+      err: error?.message || String(error)
+    });
+  }
+};
+
+const syncTelegramCleared = async (signals, meta = {}) => {
+  try {
+    await signalTelegramSync.onSignalsCleared(signals, meta);
+  } catch (error) {
+    log.warn("TELEGRAM_SYNC_CLEAR_FAIL", {
+      count: Array.isArray(signals) ? signals.length : 0,
+      err: error?.message || String(error)
+    });
+  }
+};
+
 const loadSignalsFromDB = async () => {
   if (!persistEnabled()) return;
   await ensureDB();
@@ -196,6 +259,22 @@ const emitState = (force = 0) => {
 const getSignal = (key) => S.signals.get(key) || null;
 const hasSignal = (key) => S.signals.has(key);
 const listSignals = (limit = 800) => Array.from(S.signals.values()).slice(0, limit);
+const findActiveSignal = (symbol, setup, excludeKey = "") => {
+  const sym = strOrEmpty(symbol).trim();
+  const normalizedSetup = strOrEmpty(setup).trim();
+  const skipKey = strOrEmpty(excludeKey);
+
+  for (const signal of S.signals.values()) {
+    if (!signal) continue;
+    if (skipKey && signal.key === skipKey) continue;
+    if (signal.symbol !== sym) continue;
+    if (signal.setup !== normalizedSetup) continue;
+    if (!isActiveSignalStatus(signal.status)) continue;
+    return signal;
+  }
+
+  return null;
+};
 
 const startSession = async ({ loadDb = true, clearDb = false } = {}) => {
   if (clearDb) await clearSignalsDB();
@@ -249,36 +328,42 @@ const setLiveCount = (n) => {
 };
 
 /* -------------------- Signal Upsert / Removal -------------------- */
-const shouldReplaceExistingBySymbol = (existing, incoming) => {
-  const a = tfRank(existing.tf), b = tfRank(incoming.tf);
-  if (a !== b) return b > a;
-
-  const ec = Number(existing.closeTime) || 0;
-  const ic = Number(incoming.closeTime) || 0;
-  return ic >= ec;
-};
-
 const upsertSignal = async (sig, { emit = true } = {}) => {
-  const normalized = { ...sig, key: strOrEmpty(sig.key), symbol: strOrEmpty(sig.symbol), tf: strOrEmpty(sig.tf), setup: strOrEmpty(sig.setup), side: strOrEmpty(sig.side), status: strOrEmpty(sig.status), history: normalizeHistory(sig.history) };
+  let normalized = { ...sig, key: strOrEmpty(sig.key), symbol: strOrEmpty(sig.symbol), tf: strOrEmpty(sig.tf), setup: strOrEmpty(sig.setup), side: strOrEmpty(sig.side), status: strOrEmpty(sig.status), history: normalizeHistory(sig.history) };
   const sym = normalized.symbol.trim();
+  const existingByKey = S.signals.get(normalized.key) || null;
+  if (existingByKey && isActiveSignalStatus(existingByKey.status)) {
+    normalized = mergeActiveSignal(existingByKey, normalized);
+  }
+
+  const activeContextSignal = findActiveSignal(sym, normalized.setup, normalized.key);
+  if (activeContextSignal) {
+    normalized = mergeActiveSignal(activeContextSignal, normalized);
+  }
 
   if (sym) {
     const existingKey = S.symbolToKey.get(sym);
     if (existingKey && existingKey !== normalized.key) {
       const existing = S.signals.get(existingKey);
-      if (existing && !shouldReplaceExistingBySymbol(existing, normalized)) return;
-      S.signals.delete(existingKey);
-      await deleteSignalByKey(existingKey);
-      publisher.publish("SIGNAL_REMOVE", { key: existingKey });
-      S.symbolToKey.delete(sym);
+      if (existing && isActiveSignalStatus(existing.status)) {
+        normalized = mergeActiveSignal(existing, normalized);
+      } else if (existing) {
+        await syncTelegramRemoved(existing, { reason: "INVALIDATED" });
+        S.signals.delete(existingKey);
+        await deleteSignalByKey(existingKey);
+        publisher.publish("SIGNAL_REMOVE", { key: existingKey });
+        S.symbolToKey.delete(sym);
+      }
     }
   }
 
   const existed = S.signals.has(normalized.key);
+  const previous = S.signals.get(normalized.key) || null;
   S.signals.set(normalized.key, normalized);
   if (sym) S.symbolToKey.set(sym, normalized.key);
 
   await persistSignal(normalized);
+  await syncTelegramUpsert(normalized, { existed, previous });
   publisher.publish(existed ? "SIGNAL_UPDATE" : "SIGNAL_NEW", toSignalDTO(normalized));
   if (emit) emitState();
 };
@@ -287,6 +372,7 @@ const removeSignal = async (key, { emit = true } = {}) => {
   const sig = S.signals.get(key);
   if (!sig) return false;
 
+  await syncTelegramRemoved(sig, { reason: "INVALIDATED" });
   S.signals.delete(key);
   if (sig.symbol && S.symbolToKey.get(sig.symbol) === key) S.symbolToKey.delete(sig.symbol);
   await deleteSignalByKey(key);
@@ -296,6 +382,8 @@ const removeSignal = async (key, { emit = true } = {}) => {
 };
 
 const clearSignals = async ({ emit = true, clearDb = true } = {}) => {
+  const removedSignals = Array.from(S.signals.values());
+  await syncTelegramCleared(removedSignals, { reason: "INVALIDATED" });
   S.signals.clear();
   S.symbolToKey.clear();
   S.coolUntil = 0;
@@ -313,6 +401,7 @@ export default {
   getSignal,
   hasSignal,
   listSignals,
+  findActiveSignal,
   startSession,
   stopSession,
   setUniverse,

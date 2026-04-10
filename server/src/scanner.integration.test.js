@@ -60,6 +60,7 @@ let scannerState;
 let worker;
 let market;
 let dbmod;
+let signalsService;
 
 before(async () => {
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "signalpulse-server-test-"));
@@ -114,6 +115,7 @@ before(async () => {
   worker = (await import("./scanner/worker.js")).default;
   market = (await import("./market/state.js")).default;
   dbmod = (await import("./db/sqlite.js")).default;
+  signalsService = await import("./services/signals.service.js");
 
   const app = express();
   app.use(express.json());
@@ -411,4 +413,177 @@ test("worker start directly hydrates market state from mocked Binance responses"
 
   assert.equal(worker.isRunning(), false);
   assert.equal(market.snapshot().status, "stopped");
+});
+
+test("active signal keeps immutable identity fields when a new scan result arrives", async () => {
+  await market.startSession({ loadDb: false, clearDb: true });
+
+  const original = {
+    key: "BTCUSDT|1m|EMA_ATR|LONG",
+    symbol: "BTCUSDT",
+    tf: "1m",
+    setup: "EMA_ATR",
+    side: "LONG",
+    status: "OPEN",
+    entry: 100,
+    sl: 95,
+    tp: 110,
+    rr: 2,
+    closeTime: 111,
+    createdAt: 1_000,
+    lastScanTs: 1_000,
+    lastLiveTs: NaN,
+    live: NaN,
+    pnlPct: NaN,
+    pnlUsdt: NaN,
+    history: []
+  };
+
+  const replacementAttempt = {
+    key: "BTCUSDT|5m|EMA_ATR|SHORT",
+    symbol: "BTCUSDT",
+    tf: "5m",
+    setup: "EMA_ATR",
+    side: "SHORT",
+    status: "OPEN",
+    entry: 125,
+    sl: 130,
+    tp: 115,
+    rr: 1.5,
+    closeTime: 222,
+    createdAt: 2_000,
+    lastScanTs: 2_000,
+    lastLiveTs: NaN,
+    live: NaN,
+    pnlPct: NaN,
+    pnlUsdt: NaN,
+    history: []
+  };
+
+  await market.upsertSignal(original, { emit: false });
+  await market.upsertSignal(replacementAttempt, { emit: false });
+
+  const snapshot = market.snapshot();
+  const stored = market.getSignal(original.key);
+  assert.equal(snapshot.signals.length, 1);
+  assert.equal(snapshot.signals[0].key, original.key);
+  assert.equal(snapshot.signals[0].tf, original.tf);
+  assert.equal(snapshot.signals[0].side, original.side);
+  assert.equal(snapshot.signals[0].entry, original.entry);
+  assert.equal(snapshot.signals[0].sl, original.sl);
+  assert.equal(snapshot.signals[0].tp, original.tp);
+  assert.equal(snapshot.signals[0].rr, original.rr);
+  assert.equal(snapshot.signals[0].createdAt, original.createdAt);
+  assert.equal(snapshot.signals[0].lastScanTs, replacementAttempt.lastScanTs);
+  assert.equal(stored.closeTime, original.closeTime);
+});
+
+test("patchSignal updates dynamic fields without mutating an active signal structure", async () => {
+  await market.startSession({ loadDb: false, clearDb: true });
+
+  const original = {
+    key: "ETHUSDT|1m|EMA_ATR|LONG",
+    symbol: "ETHUSDT",
+    tf: "1m",
+    setup: "EMA_ATR",
+    side: "LONG",
+    status: "OPEN",
+    entry: 200,
+    sl: 190,
+    tp: 220,
+    rr: 2,
+    closeTime: 333,
+    createdAt: 3_000,
+    lastScanTs: 3_000,
+    lastLiveTs: NaN,
+    live: NaN,
+    pnlPct: NaN,
+    pnlUsdt: NaN,
+    history: []
+  };
+
+  await market.upsertSignal(original, { emit: false });
+  await signalsService.patchSignal(original.key, {
+    entry: 999,
+    sl: 1,
+    tp: 2,
+    rr: 9,
+    side: "SHORT",
+    setup: "OTHER",
+    live: 205,
+    pnlPct: 2.5,
+    pnlUsdt: 7.5,
+    lastScanTs: 3_500,
+    lastLiveTs: 3_550
+  }, { emit: false });
+
+  const signal = market.getSignal(original.key);
+  assert.equal(signal.entry, original.entry);
+  assert.equal(signal.sl, original.sl);
+  assert.equal(signal.tp, original.tp);
+  assert.equal(signal.rr, original.rr);
+  assert.equal(signal.side, original.side);
+  assert.equal(signal.setup, original.setup);
+  assert.equal(signal.live, 205);
+  assert.equal(signal.pnlPct, 2.5);
+  assert.equal(signal.pnlUsdt, 7.5);
+  assert.equal(signal.lastScanTs, 3_500);
+  assert.equal(signal.lastLiveTs, 3_550);
+});
+
+test("a new signal can replace the previous one only after the earlier signal is finalized", async () => {
+  await market.startSession({ loadDb: false, clearDb: true });
+
+  const original = {
+    key: "BTCUSDT|1m|EMA_ATR|LONG",
+    symbol: "BTCUSDT",
+    tf: "1m",
+    setup: "EMA_ATR",
+    side: "LONG",
+    status: "OPEN",
+    entry: 100,
+    sl: 95,
+    tp: 110,
+    rr: 2,
+    closeTime: 444,
+    createdAt: 4_000,
+    lastScanTs: 4_000,
+    lastLiveTs: NaN,
+    live: NaN,
+    pnlPct: NaN,
+    pnlUsdt: NaN,
+    history: []
+  };
+
+  const nextSignal = {
+    key: "BTCUSDT|5m|EMA_ATR|SHORT",
+    symbol: "BTCUSDT",
+    tf: "5m",
+    setup: "EMA_ATR",
+    side: "SHORT",
+    status: "OPEN",
+    entry: 130,
+    sl: 136,
+    tp: 118,
+    rr: 2,
+    closeTime: 555,
+    createdAt: 5_000,
+    lastScanTs: 5_000,
+    lastLiveTs: NaN,
+    live: NaN,
+    pnlPct: NaN,
+    pnlUsdt: NaN,
+    history: []
+  };
+
+  await market.upsertSignal(original, { emit: false });
+  await market.upsertSignal({ ...original, status: "TP", live: 110, pnlPct: 10, pnlUsdt: 10 }, { emit: false });
+  await market.upsertSignal(nextSignal, { emit: false });
+
+  const snapshot = market.snapshot();
+  assert.equal(snapshot.signals.length, 1);
+  assert.equal(snapshot.signals[0].key, nextSignal.key);
+  assert.equal(snapshot.signals[0].side, nextSignal.side);
+  assert.equal(snapshot.signals[0].entry, nextSignal.entry);
+  assert.equal(snapshot.signals[0].status, "OPEN");
 });

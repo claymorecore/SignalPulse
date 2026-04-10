@@ -21,14 +21,14 @@ describe("translateLogRows", () => {
       {
         t: 1,
         lvl: "INFO",
-        title: "Initializing scanner",
-        detail: "Preparing market data and system state."
+        title: "Scanner started",
+        detail: null
       },
       {
         t: 2,
         lvl: "OK",
-        title: "Scanner ready",
-        detail: "Tracking 40 markets using EMA and volatility strategy."
+        title: "System ready",
+        detail: null
       }
     ]);
   });
@@ -44,15 +44,31 @@ describe("translateLogRows", () => {
       {
         t: 2,
         lvl: "OK",
-        title: "Scanner ready",
-        detail: "Tracking 40 markets using EMA and volatility strategy."
+        title: "System ready",
+        detail: null
       },
       {
         t: 3,
         lvl: "WARN",
         title: "Scanner stopped",
-        detail: "The current scan session is being stopped and cleared."
+        detail: null
       }
+    ]);
+  });
+
+  it("formats signal lifecycle messages in the short allowed style", () => {
+    expect(
+      translateLogRows([
+        { t: 1, lvl: "INFO", msg: "signal generated", meta: { symbol: "BTCUSDT", side: "LONG" } },
+        { t: 2, lvl: "INFO", msg: "target reached", meta: { symbol: "BTCUSDT" } },
+        { t: 3, lvl: "INFO", msg: "stop loss triggered", meta: { symbol: "ETHUSDT" } },
+        { t: 4, lvl: "INFO", msg: "signal closed", meta: { symbol: "SOLUSDT" } }
+      ])
+    ).toEqual([
+      { t: 1, lvl: "INFO", title: "New signal detected - BTCUSDT long", detail: null },
+      { t: 2, lvl: "INFO", title: "Signal closed - TP reached", detail: null },
+      { t: 3, lvl: "INFO", title: "Signal closed - SL triggered", detail: null },
+      { t: 4, lvl: "INFO", title: "Signal invalidated", detail: null }
     ]);
   });
 
@@ -68,10 +84,6 @@ describe("getActivityHelperText", () => {
 
   it("returns active text while scanning is running", () => {
     expect(getActivityHelperText({ status: "running", session: "abc", activityRows: [{ t: 1000 }], now: 2000 })).toBe("Live scanning in progress");
-  });
-
-  it("returns monitoring text between scan cycles while still active", () => {
-    expect(getActivityHelperText({ status: "running", session: "abc", activityRows: [{ t: 1000 }], now: 10000 })).toBe("Monitoring market conditions");
   });
 
   it("returns idle text after the system has been stopped or reset", () => {

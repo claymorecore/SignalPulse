@@ -54,14 +54,22 @@ export default function App() {
     const nextSignals = new Map((state.signals || []).map((signal) => [signal.key, signal]));
 
     nextSignals.forEach((signal, key) => {
-      if (!prevSignals.has(key)) {
-        log.push("INFO", "signal generated", { symbol: signal.symbol, side: signal.side });
-      }
-    });
+      const previousSignal = prevSignals.get(key);
 
-    prevSignals.forEach((signal, key) => {
-      if (!nextSignals.has(key) && scannerIsActive) {
-        log.push("INFO", "signal closed", { symbol: signal.symbol });
+      if (!previousSignal) {
+        log.push("INFO", "signal generated", { symbol: signal.symbol, side: signal.side });
+        return;
+      }
+
+      if (previousSignal.status !== signal.status) {
+        const nextSignalStatus = String(signal.status || "").toUpperCase();
+        if (nextSignalStatus === "TP") {
+          log.push("INFO", "target reached", { symbol: signal.symbol, side: signal.side });
+        } else if (nextSignalStatus === "SL") {
+          log.push("INFO", "stop loss triggered", { symbol: signal.symbol, side: signal.side });
+        } else if (nextSignalStatus !== "OPEN") {
+          log.push("INFO", "signal closed", { symbol: signal.symbol, side: signal.side, status: signal.status });
+        }
       }
     });
 

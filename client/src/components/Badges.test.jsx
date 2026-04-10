@@ -40,8 +40,8 @@ describe('Badges component', () => {
     const badgeTexts = screen.getAllByText(/:/i).map((node) => node.textContent);
     expect(badgeTexts.slice(0, 4)).toEqual([
       'session: abc123',
-      'universe: 5',
       'signals: 10',
+      'universe: 5',
       'status: online'
     ]);
   });
