@@ -74,6 +74,7 @@ const ControlPanel = memo(function ControlPanel({
   onStart,
   onReset,
   onExportLogs,
+  disabledStart,
   disabledStop
 }) {
   const [cfg, setCfg] = useState(() => loadConfig());
@@ -310,7 +311,7 @@ const ControlPanel = memo(function ControlPanel({
 
       {/* Buttons */}
       <div className="btns">
-        <button className="primary" onClick={handleStart}>
+        <button className="primary" disabled={!!disabledStart} onClick={handleStart}>
           Start
         </button>
         <button className="ghost" disabled={!!disabledStop} onClick={handleStopReset}>

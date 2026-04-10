@@ -3,6 +3,8 @@ import { isNum } from "../lib/format.js";
 
 export default function SparkCanvas({
   history,
+  entry = NaN,
+  side = "",
   width = 520,
   height = 140,
   lineColor = "#4caf50",
@@ -26,15 +28,33 @@ export default function SparkCanvas({
     ctx.clearRect(0, 0, width, height);
 
     const arr = Array.isArray(history) ? history : [];
-    const pts = arr.filter(p => p && isNum(p.p));
+    const sideMult = String(side).toUpperCase() === "SHORT" ? -1 : 1;
+    const points = arr
+      .map(point => {
+        if (!point) return null;
+
+        if (isNum(point.pp)) {
+          return { ...point, value: point.pp };
+        }
+
+        if (isNum(point.p) && isNum(entry) && entry !== 0) {
+          const relativeMove = ((point.p - entry) / entry) * 100;
+          return { ...point, value: relativeMove * sideMult };
+        }
+
+        return null;
+      })
+      .filter(point => point && isNum(point.value));
+
+    const pts = points;
     if (pts.length < 2) return;
 
     // Compute min/max once
     let min = Infinity;
     let max = -Infinity;
     for (const p of pts) {
-      min = Math.min(min, p.p);
-      max = Math.max(max, p.p);
+      min = Math.min(min, p.value);
+      max = Math.max(max, p.value);
     }
     if (max === min) max = min + 1; // avoid division by zero
 
@@ -48,7 +68,7 @@ export default function SparkCanvas({
     // Map point index to canvas coordinates
     const getXY = i => {
       const x = x0 + (i / (pts.length - 1)) * xRange;
-      const y = y1 - ((pts[i].p - min) / (max - min)) * yRange;
+      const y = y1 - ((pts[i].value - min) / (max - min)) * yRange;
       return [x, y];
     };
 
@@ -73,7 +93,7 @@ export default function SparkCanvas({
     ctx.lineTo(x1, y1);
     ctx.closePath();
     ctx.fill();
-  }, [history, width, height, lineColor, fillColor, lineWidth, padding]);
+  }, [history, entry, side, width, height, lineColor, fillColor, lineWidth, padding]);
 
   return <canvas ref={ref} width={width} height={height} style={{ display: "block" }} />;
 }

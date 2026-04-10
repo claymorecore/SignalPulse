@@ -64,7 +64,7 @@ const HistoryPanel = memo(function HistoryPanel({ signal, refNow }) {
       </div>
 
       <div className="canvas">
-        <SparkCanvas history={history} />
+        <SparkCanvas history={history} entry={signal?.entry} side={signal?.side} />
       </div>
     </div>
   );

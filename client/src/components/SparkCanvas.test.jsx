@@ -59,10 +59,28 @@ describe("SparkCanvas", () => {
 
   it("handles history with non-number points", () => {
     const history = [{ p: 10 }, { p: "x" }, { p: 15 }];
-    render(<SparkCanvas history={history} />);
+    render(<SparkCanvas history={history} entry={10} side="LONG" />);
     // Nur gültige Punkte (10, 15) sollen gezeichnet werden
     expect(ctxMock.moveTo).toHaveBeenCalled();
     expect(ctxMock.lineTo).toHaveBeenCalled();
+  });
+
+  it("plots increasing performance upward even if short prices fall", () => {
+    const history = [{ p: 100, pp: 0 }, { p: 90, pp: 10 }];
+    render(<SparkCanvas history={history} entry={100} side="SHORT" />);
+
+    const [, firstY] = ctxMock.moveTo.mock.calls[0];
+    const [, secondY] = ctxMock.lineTo.mock.calls[0];
+    expect(secondY).toBeLessThan(firstY);
+  });
+
+  it("falls back to entry and side when pnl history is unavailable", () => {
+    const history = [{ p: 100 }, { p: 90 }];
+    render(<SparkCanvas history={history} entry={100} side="SHORT" />);
+
+    const [, firstY] = ctxMock.moveTo.mock.calls[0];
+    const [, secondY] = ctxMock.lineTo.mock.calls[0];
+    expect(secondY).toBeLessThan(firstY);
   });
 
   it("handles width and height props", () => {

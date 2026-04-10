@@ -17,6 +17,10 @@ export default function App() {
   const tNow = useNow(1000);
   const log = useLogger(700);
   const { state, applySnapshot, select, clearSelect, selected } = useSignalStore();
+  const scannerIsActive = useMemo(
+    () => ["running", "started", "scanning"].includes(String(state.status).toLowerCase()),
+    [state.status]
+  );
 
   const onSnapshot = useCallback((snap) => { applySnapshot(snap); }, [applySnapshot]);
 
@@ -29,6 +33,8 @@ export default function App() {
   useSnapshotFeed({ onSnapshot, pollMs: 1200, wsUrl });
 
   const onStart = useCallback(async (cfg) => {
+    if (scannerIsActive) return;
+
     try {
       log.push("INFO", "scanner start", cfg);
       const r = await apiPost("/api/scanner/start", cfg);
@@ -36,7 +42,7 @@ export default function App() {
     } catch (e) {
       log.push("ERR", "scanner start failed", { msg: e?.message || String(e), status: e?.status || null });
     }
-  }, [log]);
+  }, [log, scannerIsActive]);
 
   const onReset = useCallback(async () => {
     try {
@@ -49,7 +55,8 @@ export default function App() {
     }
   }, [log, clearSelect]);
 
-  const disabledStop = useMemo(() => !["running","started","scanning"].includes(state.status), [state.status]);
+  const disabledStart = useMemo(() => scannerIsActive, [scannerIsActive]);
+  const disabledStop = useMemo(() => !scannerIsActive, [scannerIsActive]);
 
   return (
     <div className="page">
@@ -77,6 +84,7 @@ export default function App() {
           onStart={onStart}
           onReset={onReset}
           onExportLogs={log.exportJsonl}
+          disabledStart={disabledStart}
           disabledStop={disabledStop}
         />
 

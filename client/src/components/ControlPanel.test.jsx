@@ -49,6 +49,17 @@ describe("ControlPanel component", () => {
     });
   });
 
+  test("Start button is disabled while the scanner is active", () => {
+    const onStart = jest.fn();
+    render(<ControlPanel onStart={onStart} disabledStart />);
+
+    const startButton = screen.getByRole("button", { name: /Start/i });
+    expect(startButton).toBeDisabled();
+
+    fireEvent.click(startButton);
+    expect(onStart).not.toHaveBeenCalled();
+  });
+
   test("Stop & Reset triggers reset without duplicate stop call", () => {
     const onStop = jest.fn();
     const onReset = jest.fn();
