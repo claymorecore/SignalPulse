@@ -10,6 +10,7 @@ import market from "./market/state.js";
 import publisher from "./market/publisher.js";
 import scannerState from "./scanner/state.js";
 import dbmod from "./db/sqlite.js";
+import signalTelegramSync from "./services/telegram/signalTelegramSync.js";
 
 import { log, requestLogger, errorLogger } from "./middleware/log.js";
 import { notFound, errorHandler } from "./middleware/error.js";
@@ -148,6 +149,12 @@ const shutdown = async (signal, exitCode = 0) => {
   }
 
   try {
+    await signalTelegramSync.stop();
+  } catch (e) {
+    log.error("SHUTDOWN_TELEGRAM_FAIL", { err: e?.message || String(e) });
+  }
+
+  try {
     await hub.close();
   } catch (e) {
     log.error("SHUTDOWN_WS_FAIL", { err: e?.message || String(e) });
@@ -181,9 +188,17 @@ process.on("SIGTERM", () => {
 });
 
 // Start server
-server.listen(env.PORT, () => {
-  const url = `http://localhost:${env.PORT}`;
-  const ws = `ws://localhost:${env.PORT}${env.WS_PATH}`;
+(async () => {
+  try {
+    await signalTelegramSync.start();
+  } catch (e) {
+    log.error("TELEGRAM_SYNC_BOOT_FAIL", { err: e?.message || String(e) });
+  }
 
-  log.warn("LISTEN", { url, ws, level: process.env.LOG_LEVEL || "info" });
-});
+  server.listen(env.PORT, () => {
+    const url = `http://localhost:${env.PORT}`;
+    const ws = `ws://localhost:${env.PORT}${env.WS_PATH}`;
+
+    log.warn("LISTEN", { url, ws, level: process.env.LOG_LEVEL || "info" });
+  });
+})();

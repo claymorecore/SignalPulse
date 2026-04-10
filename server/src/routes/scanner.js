@@ -4,6 +4,7 @@ import market from "../market/state.js";       // Market signal state
 import scannerState from "../scanner/state.js"; // Scanner runtime state
 import { log } from "../middleware/log.js";     // Logging utility
 import { validateScannerStartPayload } from "./scanner.validation.js";
+import signalTelegramSync from "../services/telegram/signalTelegramSync.js";
 
 const router = express.Router();
 
@@ -30,6 +31,7 @@ router.post("/start", async (req, res, next) => {
 
     // Clear market signals and start a fresh session
     await market.clearSignals({ clearDb: true, emit: true });
+    await signalTelegramSync.purgeQueue();
 
     const r = await scannerState.start(req.body || {});
 
@@ -69,6 +71,7 @@ router.post("/reset", async (req, res, next) => {
 
     const stopResult = await scannerState.stop({ reason: "reset" });
     await market.clearSignals({ clearDb: true, emit: true });
+    await signalTelegramSync.purgeQueue();
 
     res.json({
       ok: true,

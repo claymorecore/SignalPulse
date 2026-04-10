@@ -7,7 +7,6 @@ const initialState = {
   session: "–",
   universeCount: 0,
   signals: [],
-  signalsByKey: new Map(),
   cooldownLeftMs: 0,
   liveCount: 0,
   selectedKey: null
@@ -16,20 +15,12 @@ const initialState = {
 // Helper: builds internal state from a normalized snapshot
 const buildStateFromSnapshot = (snapshot) => {
   const snap = normalizeSnapshot(snapshot);
-  const signalsByKey = new Map();
-
-  if (Array.isArray(snap.signals)) {
-    snap.signals.forEach(signal => {
-      if (signal?.key) signalsByKey.set(signal.key, signal);
-    });
-  }
 
   return {
     status: snap.status || "idle",
     session: snap.session || "–",
     universeCount: Number.isFinite(snap.universeCount) ? snap.universeCount : 0,
     signals: Array.isArray(snap.signals) ? snap.signals : [],
-    signalsByKey,
     cooldownLeftMs: Number.isFinite(snap.cooldownLeftMs) ? snap.cooldownLeftMs : 0,
     liveCount: Number.isFinite(snap.liveCount) ? snap.liveCount : 0
   };
@@ -41,9 +32,10 @@ const reducer = (state, action) => {
     case "SNAPSHOT": {
       const next = buildStateFromSnapshot(action.snapshot);
       let selectedKey = state.selectedKey;
+      const nextKeys = new Set(next.signals.map((signal) => signal?.key).filter(Boolean));
 
       // Clear selection if the key no longer exists
-      if (selectedKey && !next.signalsByKey.has(selectedKey)) {
+      if (selectedKey && !nextKeys.has(selectedKey)) {
         selectedKey = null;
       }
 
@@ -64,6 +56,13 @@ const reducer = (state, action) => {
 // Custom hook
 export default function useSignalStore() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const signalsByKey = useMemo(() => {
+    const next = new Map();
+    for (const signal of state.signals) {
+      if (signal?.key) next.set(signal.key, signal);
+    }
+    return next;
+  }, [state.signals]);
 
   // Actions
   const applySnapshot = useCallback((snapshot) => {
@@ -81,8 +80,8 @@ export default function useSignalStore() {
   // Memoized selected signal for performance
   const selected = useMemo(() => {
     if (!state.selectedKey) return null;
-    return state.signalsByKey.get(state.selectedKey) || null;
-  }, [state.selectedKey, state.signalsByKey]);
+    return signalsByKey.get(state.selectedKey) || null;
+  }, [state.selectedKey, signalsByKey]);
 
   return {
     state,

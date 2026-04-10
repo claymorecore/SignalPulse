@@ -1,9 +1,10 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import useNow from "./hooks/useNow.js";
 import useLogger from "./hooks/useLogger.js";
 import useSignalStore from "./hooks/useSignalStore.js";
 import useSnapshotFeed from "./hooks/useSnapshotFeed.js";
 import { apiPost } from "./lib/api.js";
+import { getActivityHelperText, translateLogRows } from "./lib/activityFeed.js";
 
 import Badges from "./components/Badges.jsx";
 import ControlPanel from "./components/ControlPanel.jsx";
@@ -11,15 +12,19 @@ import SignalsTable from "./components/SignalsTable.jsx";
 import HistoryPanel from "./components/HistoryPanel.jsx";
 import SnapshotPanel from "./components/SnapshotPanel.jsx";
 
-import './App.css';
-
 export default function App() {
   const tNow = useNow(1000);
   const log = useLogger(700);
   const { state, applySnapshot, select, clearSelect, selected } = useSignalStore();
+  const prevStateRef = useRef({ status: state.status, signals: state.signals });
   const scannerIsActive = useMemo(
     () => ["running", "started", "scanning"].includes(String(state.status).toLowerCase()),
     [state.status]
+  );
+  const activityRows = useMemo(() => translateLogRows(log.rows), [log.rows]);
+  const activityHelperText = useMemo(
+    () => getActivityHelperText({ status: state.status, session: state.session, activityRows, now: tNow }),
+    [state.status, state.session, activityRows, tNow]
   );
 
   const onSnapshot = useCallback((snap) => { applySnapshot(snap); }, [applySnapshot]);
@@ -32,13 +37,50 @@ export default function App() {
 
   useSnapshotFeed({ onSnapshot, pollMs: 1200, wsUrl });
 
+  useEffect(() => {
+    const previous = prevStateRef.current;
+    const prevStatus = String(previous.status || "").toLowerCase();
+    const nextStatus = String(state.status || "").toLowerCase();
+
+    if (prevStatus !== nextStatus) {
+      if (["running", "started", "scanning"].includes(prevStatus) && ["idle", "stopped"].includes(nextStatus)) {
+        log.push("INFO", "scanner stopped", { status: state.status });
+      }
+    }
+
+    const prevSignals = new Map((previous.signals || []).map((signal) => [signal.key, signal]));
+    const nextSignals = new Map((state.signals || []).map((signal) => [signal.key, signal]));
+
+    nextSignals.forEach((signal, key) => {
+      const previousSignal = prevSignals.get(key);
+
+      if (!previousSignal) {
+        log.push("INFO", "signal generated", { symbol: signal.symbol, side: signal.side });
+        return;
+      }
+
+      if (previousSignal.status !== signal.status) {
+        const nextSignalStatus = String(signal.status || "").toUpperCase();
+        if (nextSignalStatus === "TP") {
+          log.push("INFO", "target reached", { symbol: signal.symbol, side: signal.side });
+        } else if (nextSignalStatus === "SL") {
+          log.push("INFO", "stop loss triggered", { symbol: signal.symbol, side: signal.side });
+        } else if (nextSignalStatus !== "OPEN") {
+          log.push("INFO", "signal closed", { symbol: signal.symbol, side: signal.side, status: signal.status });
+        }
+      }
+    });
+
+    prevStateRef.current = { status: state.status, signals: state.signals };
+  }, [state.status, state.signals, scannerIsActive, log]);
+
   const onStart = useCallback(async (cfg) => {
     if (scannerIsActive) return;
 
     try {
-      log.push("INFO", "scanner start", cfg);
+      log.push("INFO", "scanner initializing");
       const r = await apiPost("/api/scanner/start", cfg);
-      log.push("OK", "scanner started", r);
+      log.push("OK", "scanner ready", r);
     } catch (e) {
       log.push("ERR", "scanner start failed", { msg: e?.message || String(e), status: e?.status || null });
     }
@@ -46,7 +88,6 @@ export default function App() {
 
   const onReset = useCallback(async () => {
     try {
-      log.push("WARN", "scanner reset", {});
       const r = await apiPost("/api/scanner/reset", {});
       log.push("OK", "scanner reset", r);
       clearSelect();
@@ -83,7 +124,6 @@ export default function App() {
         <ControlPanel
           onStart={onStart}
           onReset={onReset}
-          onExportLogs={log.exportJsonl}
           disabledStart={disabledStart}
           disabledStop={disabledStop}
         />
@@ -100,14 +140,18 @@ export default function App() {
           <div className="logWrap">
             <div className="logTop">
               <span>Logs</span>
-              <span className="mini">
-                req:{log.summary.req} ok:{log.summary.ok} 429:{log.summary.s429} 5xx:{log.summary.s5xx} err:{log.summary.err} | p50:{log.summary.p50 ?? "–"} p95:{log.summary.p95 ?? "–"}
-              </span>
+              <span className="mini">{activityHelperText}</span>
             </div>
             <div className="log">
-              {log.rows.slice().reverse().map((r,i) => (
+              {activityRows.slice().reverse().map((r,i) => (
                 <div key={i} className="mini mono" style={{ opacity: 0.92 }}>
-                  [{new Date(r.t).toLocaleTimeString()}] {r.lvl} {r.msg} {r.meta ? JSON.stringify(r.meta) : ""}
+                  [{new Date(r.t).toLocaleTimeString()}] {r.title}
+                  {r.detail ? (
+                    <>
+                      <br />
+                      <span>{r.detail}</span>
+                    </>
+                  ) : null}
                 </div>
               ))}
             </div>

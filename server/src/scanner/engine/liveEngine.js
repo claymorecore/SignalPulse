@@ -3,6 +3,7 @@ import market from "../../market/state.js";
 import binance from "../../binance/client.js";
 import locks from "../locks.js";
 import { log } from "../../middleware/log.js";
+import { updateLive } from "../../services/signals.service.js";
 
 const now = () => Date.now();
 
@@ -27,42 +28,7 @@ export async function pollLive({ cfg, runningRef }) {
     for (const sig of open) {
       const p = prices.get(sig.symbol);
       if (!Number.isFinite(p)) continue;
-
-      const ts = now();
-
-      sig.live = p;
-      sig.lastLiveTs = ts;
-
-      const per1 = sig.side === "LONG" ? p - sig.entry : sig.entry - p;
-      sig.pnlUsdt = per1 * effQty;
-      sig.pnlPct = sig.entry > 0 ? (per1 / sig.entry) * 100 : NaN;
-
-      if (!Array.isArray(sig.history)) {
-        sig.history = [];
-      }
-
-      sig.history.push({
-        t: ts,
-        p,
-        pp: sig.pnlPct,
-        u: sig.pnlUsdt
-      });
-
-      if (sig.history.length > 240) {
-        sig.history.splice(0, sig.history.length - 240);
-      }
-
-      if (sig.status === "OPEN") {
-        if (sig.side === "LONG") {
-          if (p <= sig.sl) sig.status = "SL";
-          else if (p >= sig.tp) sig.status = "TP";
-        } else {
-          if (p >= sig.sl) sig.status = "SL";
-          else if (p <= sig.tp) sig.status = "TP";
-        }
-      }
-
-      await market.upsertSignal(sig, { emit: false });
+      await updateLive(sig, p, effQty, { emit: false });
     }
 
     market.emitState();

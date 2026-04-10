@@ -16,14 +16,6 @@ const TF_SPECS = {
   "5m": { intervalKey: "int5", defaultSec: 120, minSec: 30, maxSec: 3600 }
 };
 
-const tfRank = (tf) => {
-  if (tf === "15m") return 4;
-  if (tf === "5m") return 3;
-  if (tf === "3m") return 2;
-  if (tf === "1m") return 1;
-  return 0;
-};
-
 let RUNNING = false;
 let CFG = null;
 let TIMERS = {};
@@ -91,18 +83,6 @@ const normalizeCfg = (c) => {
   };
 };
 
-const shouldReplace = (existing, incoming) => {
-  const a = tfRank(existing.tf);
-  const b = tfRank(incoming.tf);
-
-  if (a !== b) return b > a;
-
-  const ec = Number(existing.closeTime) || 0;
-  const ic = Number(incoming.closeTime) || 0;
-
-  return ic >= ec;
-};
-
 const buildSignalForStrategy = ({ symbol, tf, klines, cfg }) => {
   return strategies.buildSignal({
     strategy: cfg.strategy,
@@ -157,15 +137,6 @@ const scanTick = async (tf) => {
         if (!sig) {
           await sleep(CFG.throttle);
           continue;
-        }
-
-        const existingKey = market.S.symbolToKey.get(sig.symbol);
-        if (existingKey && existingKey !== sig.key) {
-          const ex = market.S.signals.get(existingKey);
-          if (ex && !shouldReplace(ex, sig)) {
-            await sleep(CFG.throttle);
-            continue;
-          }
         }
 
         await market.upsertSignal(sig, { emit: true });

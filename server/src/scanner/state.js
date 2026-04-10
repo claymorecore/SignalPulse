@@ -1,6 +1,7 @@
 import { log } from "../middleware/log.js";
 import worker from "./worker.js";
 import market from "../market/state.js";
+import signalTelegramSync from "../services/telegram/signalTelegramSync.js";
 
 const now = () => Date.now();
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -16,7 +17,7 @@ const DEFAULT_CANONICAL_CFG = {
   indicators: { emaFast: 34, emaSlow: 144, atrLen: 14, atrFactor: 1.5 },
   risk: { rrTarget: 2, qty: 1, riskMult: 3 },
   live: { pnlPollSec: 3 },
-  price: { mode: "mark" }
+  price: { mode: "last" }
 };
 
 // Merge base config with incoming updates
@@ -204,6 +205,12 @@ const stop = async ({ reason = "stop" } = {}) => {
     await worker.stop();
   } catch (e) {
     log.warn("SCANNER_WORKER_STOP_FAIL", { err: e?.message || String(e) });
+  }
+
+  try {
+    await signalTelegramSync.purgeQueue();
+  } catch (e) {
+    log.warn("TELEGRAM_QUEUE_PURGE_FAIL", { err: e?.message || String(e), reason });
   }
 
   log.info("SCANNER_STOP", { reason, already: false });

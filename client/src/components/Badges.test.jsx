@@ -26,4 +26,23 @@ describe('Badges component', () => {
     expect(screen.getByText(/universe: 5/i)).toBeInTheDocument();
     expect(screen.getByText(/signals: 10/i)).toBeInTheDocument();
   });
+
+  test('renders pills with status as the final rightmost pill', () => {
+    render(
+      <Badges
+        status="online"
+        session="abc123"
+        universeCount={5}
+        signalsCount={10}
+      />
+    );
+
+    const badgeTexts = screen.getAllByText(/:/i).map((node) => node.textContent);
+    expect(badgeTexts.slice(0, 4)).toEqual([
+      'session: abc123',
+      'signals: 10',
+      'universe: 5',
+      'status: online'
+    ]);
+  });
 });
