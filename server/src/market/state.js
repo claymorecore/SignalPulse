@@ -3,7 +3,6 @@ import env from "../config/env.js";
 import publisher from "./publisher.js";
 import dbmod from "../db/sqlite.js";
 import { log } from "../middleware/log.js";
-import signalTelegramSync from "../services/telegram/signalTelegramSync.js";
 
 /* -------------------- Helpers -------------------- */
 const now = () => Date.now();
@@ -189,39 +188,6 @@ const clearSignalsDB = async () => {
   await dbmod.run("DELETE FROM signals");
 };
 
-const syncTelegramUpsert = async (signal, meta = {}) => {
-  try {
-    await signalTelegramSync.onSignalUpsert(signal, meta);
-  } catch (error) {
-    log.warn("TELEGRAM_SYNC_UPSERT_FAIL", {
-      key: signal?.key || null,
-      err: error?.message || String(error)
-    });
-  }
-};
-
-const syncTelegramRemoved = async (signal, meta = {}) => {
-  try {
-    await signalTelegramSync.onSignalRemoved(signal, meta);
-  } catch (error) {
-    log.warn("TELEGRAM_SYNC_REMOVE_FAIL", {
-      key: signal?.key || null,
-      err: error?.message || String(error)
-    });
-  }
-};
-
-const syncTelegramCleared = async (signals, meta = {}) => {
-  try {
-    await signalTelegramSync.onSignalsCleared(signals, meta);
-  } catch (error) {
-    log.warn("TELEGRAM_SYNC_CLEAR_FAIL", {
-      count: Array.isArray(signals) ? signals.length : 0,
-      err: error?.message || String(error)
-    });
-  }
-};
-
 const loadSignalsFromDB = async () => {
   if (!persistEnabled()) return;
   await ensureDB();
@@ -348,7 +314,6 @@ const upsertSignal = async (sig, { emit = true } = {}) => {
       if (existing && isActiveSignalStatus(existing.status)) {
         normalized = mergeActiveSignal(existing, normalized);
       } else if (existing) {
-        await syncTelegramRemoved(existing, { reason: "INVALIDATED" });
         S.signals.delete(existingKey);
         await deleteSignalByKey(existingKey);
         publisher.publish("SIGNAL_REMOVE", { key: existingKey });
@@ -363,7 +328,6 @@ const upsertSignal = async (sig, { emit = true } = {}) => {
   if (sym) S.symbolToKey.set(sym, normalized.key);
 
   await persistSignal(normalized);
-  await syncTelegramUpsert(normalized, { existed, previous });
   publisher.publish(existed ? "SIGNAL_UPDATE" : "SIGNAL_NEW", toSignalDTO(normalized));
   if (emit) emitState();
 };
@@ -372,7 +336,6 @@ const removeSignal = async (key, { emit = true } = {}) => {
   const sig = S.signals.get(key);
   if (!sig) return false;
 
-  await syncTelegramRemoved(sig, { reason: "INVALIDATED" });
   S.signals.delete(key);
   if (sig.symbol && S.symbolToKey.get(sig.symbol) === key) S.symbolToKey.delete(sig.symbol);
   await deleteSignalByKey(key);
@@ -382,8 +345,6 @@ const removeSignal = async (key, { emit = true } = {}) => {
 };
 
 const clearSignals = async ({ emit = true, clearDb = true } = {}) => {
-  const removedSignals = Array.from(S.signals.values());
-  await syncTelegramCleared(removedSignals, { reason: "INVALIDATED" });
   S.signals.clear();
   S.symbolToKey.clear();
   S.coolUntil = 0;

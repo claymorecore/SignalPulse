@@ -10,7 +10,6 @@ import market from "./market/state.js";
 import publisher from "./market/publisher.js";
 import scannerState from "./scanner/state.js";
 import dbmod from "./db/sqlite.js";
-import signalTelegramSync from "./services/telegram/signalTelegramSync.js";
 
 import { log, requestLogger, errorLogger } from "./middleware/log.js";
 import { notFound, errorHandler } from "./middleware/error.js";
@@ -20,6 +19,13 @@ import marketRoute from "./routes/market.js";
 import scannerRoute from "./routes/scanner.js";
 import signalsRoute from "./routes/signals.js";
 import strategiesRoutes from "./routes/strategies.js";
+import dashboardRoute from "./routes/dashboard.js";
+import toolsRoute from "./routes/tools.js";
+import newsRoute from "./routes/news.js";
+import learnRoute from "./routes/learn.js";
+import docsRoute from "./routes/docs.js";
+import corsMiddleware from "./middleware/cors.js";
+import rateLimit from "./middleware/rate-limit.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,6 +49,8 @@ const app = express();
 app.disable("x-powered-by");
 
 app.use(express.json({ limit: "2mb" }));
+app.use(corsMiddleware);
+app.use(rateLimit);
 app.use(requestLogger);
 
 // API Routes
@@ -51,6 +59,11 @@ app.use("/api/market", marketRoute);
 app.use("/api/scanner", scannerRoute);
 app.use("/api/signals", signalsRoute);
 app.use("/api/strategies", strategiesRoutes);
+app.use("/api/dashboard", dashboardRoute);
+app.use("/api/tools", toolsRoute);
+app.use("/api/news", newsRoute);
+app.use("/api/learn", learnRoute);
+app.use("/api/docs", docsRoute);
 
 // Client static hosting
 const clientDist = path.resolve(__dirname, "../../client/dist");
@@ -149,12 +162,6 @@ const shutdown = async (signal, exitCode = 0) => {
   }
 
   try {
-    await signalTelegramSync.stop();
-  } catch (e) {
-    log.error("SHUTDOWN_TELEGRAM_FAIL", { err: e?.message || String(e) });
-  }
-
-  try {
     await hub.close();
   } catch (e) {
     log.error("SHUTDOWN_WS_FAIL", { err: e?.message || String(e) });
@@ -189,12 +196,6 @@ process.on("SIGTERM", () => {
 
 // Start server
 (async () => {
-  try {
-    await signalTelegramSync.start();
-  } catch (e) {
-    log.error("TELEGRAM_SYNC_BOOT_FAIL", { err: e?.message || String(e) });
-  }
-
   server.listen(env.PORT, () => {
     const url = `http://localhost:${env.PORT}`;
     const ws = `ws://localhost:${env.PORT}${env.WS_PATH}`;

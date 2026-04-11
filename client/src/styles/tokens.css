@@ -1,0 +1,62 @@
+:root {
+  color-scheme: dark;
+  --color-bg: #05070b;
+  --color-bg-elevated: rgba(12, 15, 21, 0.82);
+  --color-bg-panel: rgba(14, 18, 25, 0.9);
+  --color-bg-soft: rgba(255, 255, 255, 0.04);
+  --color-text: #f4f7fb;
+  --color-text-muted: #9da8ba;
+  --color-text-soft: #c7d1de;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-accent: #e9edf5;
+  --color-success: #61d5a3;
+  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.24);
+  --shadow-hover: 0 24px 48px rgba(0, 0, 0, 0.3);
+  --shadow-border: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --radius-xs: 10px;
+  --radius-sm: 14px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+  --container-width: min(1200px, calc(100vw - 2rem));
+  --content-width: min(760px, 100%);
+  --nav-height: 76px;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-display: "Manrope", var(--font-sans);
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: clamp(1.8rem, 3vw, 2.5rem);
+  --text-3xl: clamp(2.6rem, 5vw, 4.4rem);
+  --text-4xl: clamp(3.25rem, 7vw, 5.5rem);
+  --line-tight: 1.05;
+  --line-normal: 1.55;
+  --motion-fast: 140ms ease;
+  --motion-base: 220ms ease;
+  --motion-slow: 320ms ease;
+  --z-nav: 40;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms linear;
+    --motion-base: 0ms linear;
+    --motion-slow: 0ms linear;
+  }
+}

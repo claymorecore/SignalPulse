@@ -70,16 +70,7 @@ export const env = {
   WS_PATH: toStr(process.env.WS_PATH, "/ws"),
   API_PREFIX: toStr(process.env.API_PREFIX, "/api"),
   DB_PATH: toStr(process.env.DB_PATH, "./data.sqlite"),
-  PERSIST_SIGNALS: toBool(process.env.PERSIST_SIGNALS, true),
-  TELEGRAM_BOT_TOKEN: toStr(process.env.TELEGRAM_BOT_TOKEN, ""),
-  TELEGRAM_BOT_ID: toStr(process.env.TELEGRAM_BOT_ID, ""),
-  TELEGRAM_CHAT_LINK: toStr(process.env.TELEGRAM_CHAT_LINK, ""),
-  TELEGRAM_CHAT_ID: toStr(process.env.TELEGRAM_CHAT_ID, ""),
-  TELEGRAM_SYNC_STARTUP_PROBE: toBool(process.env.TELEGRAM_SYNC_STARTUP_PROBE, false),
-  TELEGRAM_SYNC_STARTUP_PROBE_TEXT: toStr(
-    process.env.TELEGRAM_SYNC_STARTUP_PROBE_TEXT,
-    "SignalPulse Telegram sync probe"
-  )
+  PERSIST_SIGNALS: toBool(process.env.PERSIST_SIGNALS, true)
 };
 
 export default env;

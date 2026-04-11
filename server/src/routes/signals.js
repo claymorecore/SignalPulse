@@ -1,6 +1,7 @@
 // routes/signals.js
 import express from "express";
 import market from "../market/state.js";
+import signalEngineService from "../services/signal-engine.service.js";
 
 const router = express.Router();
 
@@ -8,11 +9,70 @@ const router = express.Router();
 router.get("/", (req, res, next) => {
   try {
     const limit = Math.max(1, parseInt(req.query.limit, 10) || 500);
-    const items = market.listSignals(limit);
+    const items = signalEngineService.listSignals({ limit });
 
     res.json({
       ok: true,
       signals: items
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/active", (req, res, next) => {
+  try {
+    const limit = Math.max(1, parseInt(req.query.limit, 10) || 200);
+    res.json({
+      ok: true,
+      signals: signalEngineService.getActiveSignals({ limit })
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/history", (req, res, next) => {
+  try {
+    const limit = Math.max(1, parseInt(req.query.limit, 10) || 200);
+    res.json({
+      ok: true,
+      signals: signalEngineService.getSignalHistory({ limit })
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get("/engine/summary", (req, res, next) => {
+  try {
+    res.json({
+      ok: true,
+      summary: signalEngineService.getEngineSummary()
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/scan", async (req, res, next) => {
+  try {
+    const result = await signalEngineService.scanSignals(req.body || {});
+    res.json({
+      ok: true,
+      result
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/replay", async (req, res, next) => {
+  try {
+    const result = await signalEngineService.replaySignals(req.body || {});
+    res.json({
+      ok: true,
+      result
     });
   } catch (e) {
     next(e);
@@ -35,7 +95,7 @@ router.get("/snapshot", (req, res, next) => {
 router.get("/:key", (req, res, next) => {
   try {
     const key = String(req.params.key || "");
-    const sig = market.getSignal(key);
+    const sig = signalEngineService.getSignalById(key) || market.getSignal(key);
 
     if (!sig) {
       res.status(404).json({

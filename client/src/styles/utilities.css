@@ -1,0 +1,29 @@
+.u-mt-8 {
+  margin-top: var(--space-8);
+}
+
+.u-align-start {
+  align-items: start;
+}
+
+.u-full-width {
+  width: 100%;
+}
+
+.u-hidden-mobile {
+  display: block;
+}
+
+.u-hidden-desktop {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .u-hidden-mobile {
+    display: none;
+  }
+
+  .u-hidden-desktop {
+    display: block;
+  }
+}
