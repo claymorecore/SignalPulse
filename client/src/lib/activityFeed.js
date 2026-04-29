@@ -16,6 +16,24 @@ const formatSide = (side) => {
   return "new";
 };
 
+const normalizeRejectReason = (reason) =>
+  cleanText(reason)
+    .replace(/_/g, " ")
+    .toLowerCase();
+
+const formatRejectCounts = (counts) => {
+  const entries = Object.entries(counts || {})
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 5);
+
+  if (!entries.length) return null;
+
+  return entries
+    .map(([reason, count]) => `${normalizeRejectReason(reason)}: ${count}`)
+    .join(" | ");
+};
+
 const normalizeDisplay = (entry) =>
   entry
     ? {
@@ -25,7 +43,6 @@ const normalizeDisplay = (entry) =>
       }
     : null;
 
-// 👉 Count visual
 const applyCount = (title, count) => {
   if (!count || count <= 1) return title;
   return `${title} (x${count})`;
@@ -110,6 +127,13 @@ const buildActivityEntry = (row) => {
       };
       break;
 
+    case "signal reject summary":
+      base = {
+        title: "Signal rejects",
+        detail: meta?.detail || formatRejectCounts(meta?.counts) || null
+      };
+      break;
+
     default:
       return null;
   }
@@ -132,7 +156,6 @@ export const translateLogRows = (rows) => {
 
     const previous = acc[acc.length - 1];
 
-    // 🔥 smarter dedupe (inkl. level!)
     if (
       previous &&
       previous.title === entry.title &&

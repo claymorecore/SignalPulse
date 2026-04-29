@@ -6,10 +6,16 @@ import { apiGet } from "../lib/api.js";
  *
  * @param {Object} options
  * @param {function} options.onSnapshot - callback invoked with new snapshots
+ * @param {function} options.onEvent - callback invoked with non-state websocket events
  * @param {number} options.pollMs - polling interval (default 1200ms)
  * @param {string|null} options.wsUrl - WebSocket URL (optional)
  */
-export default function useSnapshotFeed({ onSnapshot, pollMs = 1200, wsUrl = null }) {
+export default function useSnapshotFeed({
+  onSnapshot,
+  onEvent,
+  pollMs = 1200,
+  wsUrl = null
+}) {
   const aliveRef = useRef(false);
   const wsRef = useRef(null);
   const pollTimerRef = useRef(null);
@@ -20,11 +26,16 @@ export default function useSnapshotFeed({ onSnapshot, pollMs = 1200, wsUrl = nul
   const abortControllerRef = useRef(null);
   const pollInFlightRef = useRef(false);
   const onSnapshotRef = useRef(onSnapshot);
+  const onEventRef = useRef(onEvent);
   const lastSnapshotRef = useRef(null);
 
   useEffect(() => {
     onSnapshotRef.current = onSnapshot;
   }, [onSnapshot]);
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -49,6 +60,16 @@ export default function useSnapshotFeed({ onSnapshot, pollMs = 1200, wsUrl = nul
         onSnapshotRef.current?.(snap);
       } catch (err) {
         console.error("onSnapshot callback crashed:", err);
+      }
+    };
+
+    const recordEvent = (evt) => {
+      if (!evt || typeof evt !== "object") return;
+
+      try {
+        onEventRef.current?.(evt);
+      } catch (err) {
+        console.error("onEvent callback crashed:", err);
       }
     };
 
@@ -161,7 +182,7 @@ export default function useSnapshotFeed({ onSnapshot, pollMs = 1200, wsUrl = nul
       let ws;
       try {
         ws = new WebSocket(wsUrl);
-      } catch (err) {
+      } catch {
         connectingRef.current = false;
         startPoll();
         attemptRef.current++;
@@ -215,6 +236,8 @@ export default function useSnapshotFeed({ onSnapshot, pollMs = 1200, wsUrl = nul
 
         if (msg.type === "EVT" && msg.evt) {
           const eventType = String(msg.evt.type || "");
+
+          recordEvent(msg.evt);
 
           if (eventType === "STATE" && msg.evt.payload) {
             recordSnapshot(msg.evt.payload);

@@ -5,13 +5,11 @@ import { log } from "../middleware/log.js";
 const BASE = String(env.BINANCE_BASE_URL || "https://fapi.binance.com").replace(/\/+$/, "");
 const HTTP_TIMEOUT_MS = 10_000;
 
-// --- Utility functions ---
 const now = () => Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const isNum = (n) => Number.isFinite(n);
 
-// --- Rate limiting state ---
 let coolUntil = 0;
 
 const blocked = () => now() < coolUntil;
@@ -21,7 +19,6 @@ const hit429 = (ms) => {
   coolUntil = Math.max(coolUntil, now() + waitMs);
 };
 
-// --- URL builder ---
 const buildUrl = (path, params) => {
   const url = new URL(BASE + path);
 
@@ -35,7 +32,6 @@ const buildUrl = (path, params) => {
   return url.toString();
 };
 
-// --- HTTP GET with retry and rate-limit handling ---
 const httpGet = async (path, params = {}, retry = 5, tag = "GET") => {
   while (blocked()) {
     const waitMs = coolUntil - now();
@@ -112,13 +108,6 @@ const httpGet = async (path, params = {}, retry = 5, tag = "GET") => {
   throw new Error("retry_exhausted");
 };
 
-// --- API Functions ---
-
-/**
- * Build top USDT trading symbols by 24h quote volume
- * @param {number} limit
- * @returns {Promise<string[]>}
- */
 export const buildUniverse = async (limit) => {
   const lim = clamp(parseInt(limit || 40, 10) || 40, 1, 200);
 
@@ -140,13 +129,6 @@ export const buildUniverse = async (limit) => {
   return universe;
 };
 
-/**
- * Fetch candlestick data for a symbol
- * @param {string} symbol
- * @param {string} tf
- * @param {number} limit
- * @returns {Promise<Array<{h:number,l:number,c:number,ct:number}>>}
- */
 export const fetchKlines = async (symbol, tf = "1m", limit = 180) => {
   const sym = String(symbol || "").trim();
   const interval = String(tf || "1m").trim();
@@ -164,19 +146,53 @@ export const fetchKlines = async (symbol, tf = "1m", limit = 180) => {
   return arr
     .filter((x) => Array.isArray(x) && x.length >= 7)
     .map((x) => ({
+      ot: Number(x[0]),
+      o: Number(x[1]),
       h: Number(x[2]),
       l: Number(x[3]),
       c: Number(x[4]),
+      v: Number(x[5]),
       ct: Number(x[6])
     }))
-    .filter((x) => isNum(x.h) && isNum(x.l) && isNum(x.c) && isNum(x.ct));
+    .filter((x) =>
+      isNum(x.ot) &&
+      isNum(x.o) &&
+      isNum(x.h) &&
+      isNum(x.l) &&
+      isNum(x.c) &&
+      isNum(x.v) &&
+      isNum(x.ct)
+    );
 };
 
-/**
- * Fetch current prices
- * @param {"mark"|"last"} pxMode
- * @returns {Promise<Map<string, number>>}
- */
+export const fetchPrice = async (symbol, pxMode = "mark") => {
+  const sym = String(symbol || "").trim();
+
+  if (!sym) return NaN;
+
+  if (pxMode === "last") {
+    const data = await httpGet(
+      "/fapi/v1/ticker/price",
+      { symbol: sym },
+      4,
+      "price"
+    );
+
+    const price = Number(data?.price);
+    return isNum(price) ? price : NaN;
+  }
+
+  const data = await httpGet(
+    "/fapi/v1/premiumIndex",
+    { symbol: sym },
+    4,
+    "premiumIndex"
+  );
+
+  const price = Number(data?.markPrice);
+  return isNum(price) ? price : NaN;
+};
+
 export const fetchAllPrices = async (pxMode = "mark") => {
   const map = new Map();
 
@@ -216,5 +232,6 @@ export const fetchAllPrices = async (pxMode = "mark") => {
 export default {
   buildUniverse,
   fetchKlines,
+  fetchPrice,
   fetchAllPrices
 };

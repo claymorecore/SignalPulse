@@ -14,6 +14,25 @@ import SignalsTable from "./components/SignalsTable.jsx";
 import HistoryPanel from "./components/HistoryPanel.jsx";
 import SnapshotPanel from "./components/SnapshotPanel.jsx";
 
+const formatRejectSummary = (payload) => {
+  const counts = payload?.counts && typeof payload.counts === "object"
+    ? payload.counts
+    : {};
+
+  const entries = Object.entries(counts)
+    .filter(([, count]) => Number(count) > 0)
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .slice(0, 5);
+
+  if (!entries.length) {
+    return "No strategy rejects in last scan window";
+  }
+
+  return entries
+    .map(([reason, count]) => `${reason}: ${count}`)
+    .join(" | ");
+};
+
 export default function App() {
   const tNow = useNow(1000);
   const log = useLogger(700);
@@ -49,6 +68,18 @@ export default function App() {
     applySnapshot(snap);
   }, [applySnapshot]);
 
+  const onEvent = useCallback((evt) => {
+    const eventType = String(evt?.type || "").trim().toUpperCase();
+
+    if (eventType === "SIGNAL_REJECT_SUMMARY") {
+      log.push("DEBUG", "signal reject summary", {
+        detail: formatRejectSummary(evt.payload),
+        counts: evt.payload?.counts || {},
+        samples: evt.payload?.samples || {}
+      });
+    }
+  }, [log]);
+
   const wsUrl = useMemo(() => {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
 
@@ -61,6 +92,7 @@ export default function App() {
 
   useSnapshotFeed({
     onSnapshot,
+    onEvent,
     pollMs: 1200,
     wsUrl
   });
@@ -195,7 +227,6 @@ export default function App() {
       </header>
 
       <div className="grid">
-        {/* LEFT COLUMN */}
         <div>
           <ControlPanel
             onStart={onStart}
@@ -206,12 +237,9 @@ export default function App() {
           />
 
           <PerformancePanel signals={state.signals} />
-
-          {/* 👇 NEU: Equity Curve */}
           <EquityPanel signals={state.signals} />
         </div>
 
-        {/* RIGHT COLUMN */}
         <section className="card">
           <h2>Signals</h2>
 

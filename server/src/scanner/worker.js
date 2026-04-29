@@ -1,14 +1,16 @@
-import env from "../config/env.js";
 import market from "../market/state.js";
+import publisher from "../market/publisher.js";
 import binance from "../binance/client.js";
 import locks from "./locks.js";
 import monitor from "./monitor.js";
 import strategies from "./strategies/index.js";
 import liveEngine from "./engine/liveEngine.js";
+import { log } from "../middleware/log.js";
 
 const now = () => Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+const isNum = (n) => Number.isFinite(n);
 
 const TF_SPECS = {
   "1m": { intervalKey: "int1", defaultSec: 45, minSec: 10, maxSec: 3600 },
@@ -20,6 +22,8 @@ let CFG = null;
 let TIMERS = {};
 let CURSOR = {};
 let SYM_NEXT = new Map();
+let REJECT_COUNTS = new Map();
+let LAST_REJECT_FLUSH = 0;
 
 const normalizeTimeframes = (rawTfs) => {
   const base = Array.isArray(rawTfs) && rawTfs.length ? rawTfs : ["1m", "5m"];
@@ -71,22 +75,104 @@ const normalizeCfg = (c) => {
     atrF: Math.max(0.05, parseFloat(x.atrF ?? 1.5) || 1.5),
     rr: Math.max(0.1, parseFloat(x.rr ?? 2) || 2),
 
+    useMtfFilter: x.useMtfFilter !== false,
+    mtfTf: String(x.mtfTf || "5m").trim(),
+
+    minTrendStrength: Math.max(0, parseFloat(x.minTrendStrength ?? 0.0028) || 0.0028),
+    minMtfTrendStrength: Math.max(0, parseFloat(x.minMtfTrendStrength ?? 0.0018) || 0.0018),
+
+    minVolatility: Math.max(0, parseFloat(x.minVolatility ?? 0.0018) || 0.0018),
+    maxVolatility: Math.max(0.001, parseFloat(x.maxVolatility ?? 0.045) || 0.045),
+
+    minBodyRatio: clamp(parseFloat(x.minBodyRatio ?? 0.5) || 0.5, 0.05, 0.95),
+    maxBadWickRatio: clamp(parseFloat(x.maxBadWickRatio ?? 0.42) || 0.42, 0.05, 0.95),
+    maxCandleAtrRange: Math.max(0.5, parseFloat(x.maxCandleAtrRange ?? 2.4) || 2.4),
+
+    maxEntryAtrFromFast: Math.max(0.2, parseFloat(x.maxEntryAtrFromFast ?? 1.25) || 1.25),
+    maxPullbackAtrMiss: Math.max(0, parseFloat(x.maxPullbackAtrMiss ?? 0.35) || 0.35),
+    maxSpawnDriftRisk: Math.max(0.05, parseFloat(x.maxSpawnDriftRisk ?? 0.3) || 0.3),
+
+    rejectDebug: x.rejectDebug !== false,
+    rejectFlushMs: clamp(parseInt(x.rejectFlushMs ?? 15_000, 10) || 15_000, 5_000, 120_000),
+
     pnlPoll: clamp(parseInt(x.pnlPoll ?? 3, 10) || 3, 1, 60) * 1000,
 
-    backfill: clamp(parseInt(x.backfill ?? 180, 10) || 180, 80, 800),
+    backfill: clamp(parseInt(x.backfill ?? 180, 10) || 180, 100, 800),
     symCd: clamp(parseInt(x.symCd ?? 6500, 10) || 6500, 200, 600000),
 
     pxMode: x.pxMode === "last" ? "last" : "mark"
   };
 };
 
-const buildSignalForStrategy = ({ symbol, tf, klines, cfg }) => {
+const bumpReject = (reason, meta = {}) => {
+  if (!CFG?.rejectDebug) return;
+
+  const key = String(reason || "UNKNOWN_REJECT").trim() || "UNKNOWN_REJECT";
+  REJECT_COUNTS.set(key, (REJECT_COUNTS.get(key) || 0) + 1);
+
+  if (meta?.symbol && meta?.tf) {
+    const sampleKey = `sample:${key}`;
+    if (!REJECT_COUNTS.has(sampleKey)) {
+      REJECT_COUNTS.set(sampleKey, {
+        symbol: meta.symbol,
+        tf: meta.tf,
+        side: meta.side || null
+      });
+    }
+  }
+};
+
+const flushRejectSummary = (force = false) => {
+  if (!CFG?.rejectDebug) return;
+
+  const t = now();
+  if (!force && t - LAST_REJECT_FLUSH < CFG.rejectFlushMs) return;
+
+  const counts = {};
+  const samples = {};
+
+  for (const [key, value] of REJECT_COUNTS.entries()) {
+    if (key.startsWith("sample:")) {
+      samples[key.replace(/^sample:/, "")] = value;
+    } else {
+      counts[key] = value;
+    }
+  }
+
+  REJECT_COUNTS.clear();
+  LAST_REJECT_FLUSH = t;
+
+  if (!Object.keys(counts).length) return;
+
+  const payload = {
+    ts: t,
+    counts,
+    samples
+  };
+
+  log.info("SIGNAL_REJECT_SUMMARY", payload);
+  publisher.publish("SIGNAL_REJECT_SUMMARY", payload);
+};
+
+const buildSignalForStrategy = ({ symbol, tf, klines, mtfKlines, cfg }) => {
+  const cfgWithReject = {
+    ...cfg,
+    onReject: (reason, meta = {}) => {
+      bumpReject(reason, {
+        symbol,
+        tf,
+        ...meta
+      });
+    }
+  };
+
   return strategies.buildSignal({
     strategy: cfg.strategy,
     symbol,
     tf,
     klines,
-    cfg
+    mtfKlines,
+    cfg: cfgWithReject
   });
 };
 
@@ -94,6 +180,7 @@ const getUniverse = () => {
   if (typeof market.getUniverse === "function") {
     return market.getUniverse() || [];
   }
+
   return market.S?.universe || [];
 };
 
@@ -117,7 +204,101 @@ const isLockedForCurrentSession = (symbol) => {
   if (typeof market.isSymbolLockedForSession === "function") {
     return market.isSymbolLockedForSession(symbol);
   }
+
   return false;
+};
+
+const isSignalInvalidAtPrice = (signal, price) => {
+  if (!signal || !isNum(price)) return true;
+
+  if (signal.side === "LONG") {
+    return price <= signal.sl || price >= signal.tp;
+  }
+
+  if (signal.side === "SHORT") {
+    return price >= signal.sl || price <= signal.tp;
+  }
+
+  return true;
+};
+
+const getSpawnInvalidReason = (signal, price) => {
+  if (!signal || !isNum(price) || price <= 0) {
+    return "SPAWN_BAD_PRICE";
+  }
+
+  if (signal.side === "LONG") {
+    if (price <= signal.sl) return "SPAWN_ALREADY_SL";
+    if (price >= signal.tp) return "SPAWN_ALREADY_TP";
+  }
+
+  if (signal.side === "SHORT") {
+    if (price >= signal.sl) return "SPAWN_ALREADY_SL";
+    if (price <= signal.tp) return "SPAWN_ALREADY_TP";
+  }
+
+  return null;
+};
+
+const isPriceStillNearEntry = (signal, price) => {
+  if (!signal || !isNum(price) || !isNum(signal.entry) || !isNum(signal.riskDistance)) {
+    return false;
+  }
+
+  const drift = Math.abs(price - signal.entry);
+  return drift <= signal.riskDistance * CFG.maxSpawnDriftRisk;
+};
+
+const validateSpawnPrice = async (signal) => {
+  const price = await binance.fetchPrice(signal.symbol, CFG.pxMode);
+
+  const invalidReason = getSpawnInvalidReason(signal, price);
+
+  if (invalidReason) {
+    bumpReject(invalidReason, {
+      symbol: signal?.symbol,
+      tf: signal?.tf,
+      side: signal?.side
+    });
+
+    return false;
+  }
+
+  if (isSignalInvalidAtPrice(signal, price)) {
+    bumpReject("SPAWN_INVALID_LEVELS", {
+      symbol: signal.symbol,
+      tf: signal.tf,
+      side: signal.side
+    });
+
+    return false;
+  }
+
+  if (!isPriceStillNearEntry(signal, price)) {
+    bumpReject("SPAWN_DRIFT_TOO_HIGH", {
+      symbol: signal.symbol,
+      tf: signal.tf,
+      side: signal.side
+    });
+
+    return false;
+  }
+
+  signal.live = price;
+  signal.lastLiveTs = now();
+
+  return true;
+};
+
+const fetchMtfKlines = async ({ symbol, tf }) => {
+  if (!CFG.useMtfFilter) return null;
+  if (tf !== "1m") return null;
+
+  const mtfTf = TF_SPECS[CFG.mtfTf] ? CFG.mtfTf : "5m";
+
+  if (mtfTf === tf) return null;
+
+  return binance.fetchKlines(symbol, mtfTf, CFG.backfill);
 };
 
 const scanTick = async (tf) => {
@@ -148,7 +329,14 @@ const scanTick = async (tf) => {
       const nextAllowedAt = SYM_NEXT.get(symbolKey) || 0;
       if (now() < nextAllowedAt) continue;
 
-      if (hasActiveTradeForSymbol(sym) || isLockedForCurrentSession(sym)) {
+      if (hasActiveTradeForSymbol(sym)) {
+        bumpReject("ACTIVE_TRADE_EXISTS", { symbol: sym, tf });
+        SYM_NEXT.set(symbolKey, now() + CFG.symCd);
+        continue;
+      }
+
+      if (isLockedForCurrentSession(sym)) {
+        bumpReject("SYMBOL_SESSION_LOCKED", { symbol: sym, tf });
         SYM_NEXT.set(symbolKey, now() + CFG.symCd);
         continue;
       }
@@ -160,19 +348,33 @@ const scanTick = async (tf) => {
         processed++;
 
         if (!klines?.length) {
+          bumpReject("FETCH_KLINES_EMPTY", { symbol: sym, tf });
           await sleep(CFG.throttle);
           continue;
         }
 
-        if (hasActiveTradeForSymbol(sym) || isLockedForCurrentSession(sym)) {
+        if (hasActiveTradeForSymbol(sym)) {
+          bumpReject("ACTIVE_TRADE_EXISTS_AFTER_KLINES", { symbol: sym, tf });
           await sleep(CFG.throttle);
           continue;
         }
+
+        if (isLockedForCurrentSession(sym)) {
+          bumpReject("SYMBOL_SESSION_LOCKED_AFTER_KLINES", { symbol: sym, tf });
+          await sleep(CFG.throttle);
+          continue;
+        }
+
+        const mtfKlines = await fetchMtfKlines({
+          symbol: sym,
+          tf
+        });
 
         const signal = buildSignalForStrategy({
           symbol: sym,
           tf,
           klines,
+          mtfKlines,
           cfg: CFG
         });
 
@@ -181,7 +383,33 @@ const scanTick = async (tf) => {
           continue;
         }
 
-        if (hasActiveTradeForSymbol(sym) || isLockedForCurrentSession(sym)) {
+        if (hasActiveTradeForSymbol(sym)) {
+          bumpReject("ACTIVE_TRADE_EXISTS_AFTER_SIGNAL", { symbol: sym, tf });
+          await sleep(CFG.throttle);
+          continue;
+        }
+
+        if (isLockedForCurrentSession(sym)) {
+          bumpReject("SYMBOL_SESSION_LOCKED_AFTER_SIGNAL", { symbol: sym, tf });
+          await sleep(CFG.throttle);
+          continue;
+        }
+
+        const validSpawn = await validateSpawnPrice(signal);
+
+        if (!validSpawn) {
+          await sleep(CFG.throttle);
+          continue;
+        }
+
+        if (hasActiveTradeForSymbol(sym)) {
+          bumpReject("ACTIVE_TRADE_EXISTS_BEFORE_UPSERT", { symbol: sym, tf });
+          await sleep(CFG.throttle);
+          continue;
+        }
+
+        if (isLockedForCurrentSession(sym)) {
+          bumpReject("SYMBOL_SESSION_LOCKED_BEFORE_UPSERT", { symbol: sym, tf });
           await sleep(CFG.throttle);
           continue;
         }
@@ -189,11 +417,21 @@ const scanTick = async (tf) => {
         await market.upsertSignal(signal, { emit: true });
 
         await sleep(CFG.throttle);
-      } catch {
+      } catch (error) {
+        bumpReject("SCAN_SYMBOL_ERROR", {
+          symbol: sym,
+          tf,
+          error: error?.message || String(error)
+        });
+
         SYM_NEXT.set(symbolKey, now() + Math.max(CFG.symCd, 12_000));
         await sleep(Math.max(CFG.throttle, 200));
+      } finally {
+        flushRejectSummary();
       }
     }
+
+    flushRejectSummary();
   } finally {
     locks.unlock(lockKey);
   }
@@ -221,6 +459,8 @@ export const start = async (cfg) => {
   TIMERS = {};
   CURSOR = {};
   SYM_NEXT = new Map();
+  REJECT_COUNTS = new Map();
+  LAST_REJECT_FLUSH = 0;
 
   const uni = await binance.buildUniverse(CFG.uni);
   market.setUniverse(uni);
@@ -256,9 +496,13 @@ export const stop = async () => {
 
   Object.values(TIMERS).forEach(clearInterval);
 
+  flushRejectSummary(true);
+
   TIMERS = {};
   CURSOR = {};
   SYM_NEXT = new Map();
+  REJECT_COUNTS = new Map();
+  LAST_REJECT_FLUSH = 0;
 
   monitor.stop();
   locks.clear();
