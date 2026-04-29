@@ -1,0 +1,24 @@
+{
+  "name": "signalpulse-server",
+  "version": "1.0.0",
+  "description": "SignalPulse local execution backend (Binance Futures scanner, REST, WS, SQLite)",
+  "type": "module",
+  "main": "src/server.js",
+  "private": true,
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test",
+    "clean": "rm -rf node_modules package-lock.json",
+    "reinstall": "npm run clean && npm install"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.4",
+    "express": "^4.19.2",
+    "sqlite3": "^6.0.1",
+    "ws": "^8.18.0"
+  }
+}
