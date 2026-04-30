@@ -100,6 +100,102 @@ const passedPullbackQuality = ({ side, candle, fast, atrNow, cfg }) => {
   return false;
 };
 
+const passedEntryConfirmation = ({ side, setupCandle, confirmCandle, fast, atrNow, cfg }) => {
+  if (cfg?.requireEntryConfirmation === false) {
+    return {
+      ok: true,
+      reason: null
+    };
+  }
+
+  if (!hasValidCandle(setupCandle) || !hasValidCandle(confirmCandle)) {
+    return {
+      ok: false,
+      reason: "ENTRY_CONFIRMATION_BAD_CANDLES"
+    };
+  }
+
+  const bufferAtr = getCfgNum(cfg, "confirmBreakBufferAtr", 0.02);
+  const buffer = bufferAtr * atrNow;
+
+  const requireStructure = cfg?.confirmRequireStructure !== false;
+
+  if (side === "LONG") {
+    if (confirmCandle.c <= confirmCandle.o) {
+      return {
+        ok: false,
+        reason: "ENTRY_CONFIRMATION_NOT_BULLISH"
+      };
+    }
+
+    if (confirmCandle.c < fast + buffer) {
+      return {
+        ok: false,
+        reason: "ENTRY_CONFIRMATION_BELOW_FAST"
+      };
+    }
+
+    if (confirmCandle.c < setupCandle.c + buffer) {
+      return {
+        ok: false,
+        reason: "ENTRY_CONFIRMATION_NO_CLOSE_PROGRESS"
+      };
+    }
+
+    if (requireStructure && confirmCandle.l < setupCandle.l) {
+      return {
+        ok: false,
+        reason: "ENTRY_CONFIRMATION_NO_HIGHER_LOW"
+      };
+    }
+
+    return {
+      ok: true,
+      reason: null
+    };
+  }
+
+  if (side === "SHORT") {
+    if (confirmCandle.c >= confirmCandle.o) {
+      return {
+        ok: false,
+        reason: "ENTRY_CONFIRMATION_NOT_BEARISH"
+      };
+    }
+
+    if (confirmCandle.c > fast - buffer) {
+      return {
+        ok: false,
+        reason: "ENTRY_CONFIRMATION_ABOVE_FAST"
+      };
+    }
+
+    if (confirmCandle.c > setupCandle.c - buffer) {
+      return {
+        ok: false,
+        reason: "ENTRY_CONFIRMATION_NO_CLOSE_PROGRESS"
+      };
+    }
+
+    if (requireStructure && confirmCandle.h > setupCandle.h) {
+      return {
+        ok: false,
+        reason: "ENTRY_CONFIRMATION_NO_LOWER_HIGH"
+      };
+    }
+
+    return {
+      ok: true,
+      reason: null
+    };
+  }
+
+  return {
+    ok: false,
+    reason: "ENTRY_CONFIRMATION_BAD_SIDE"
+  };
+};
+
 const buildTrendContext = ({ klines, cfg }) => {
   if (!Array.isArray(klines) || klines.length < 80) {
     return {
@@ -196,6 +292,68 @@ const mtfAllowsSide = ({ tf, side, mtf, cfg }) => {
   return mtf.side === side;
 };
 
+const buildCappedLevels = ({ side, entry, rawRiskDistance, cfg }) => {
+  const minRiskPct = getCfgNum(cfg, "minRiskPct", 0.0025);
+  const maxRiskPct = getCfgNum(cfg, "maxRiskPct", 0.05);
+  const minTpPct = getCfgNum(cfg, "minTpPct", 0.008);
+  const maxTpPct = getCfgNum(cfg, "maxTpPct", 0.035);
+
+  const riskPct = rawRiskDistance / entry;
+
+  if (riskPct < minRiskPct) {
+    return {
+      ok: false,
+      reason: "RISK_DISTANCE_TOO_SMALL",
+      meta: { riskPct, minRiskPct }
+    };
+  }
+
+  if (riskPct > maxRiskPct) {
+    return {
+      ok: false,
+      reason: "RISK_DISTANCE_TOO_LARGE",
+      meta: { riskPct, maxRiskPct }
+    };
+  }
+
+  const rawTpDistance = cfg.rr * rawRiskDistance;
+  const maxTpDistance = maxTpPct * entry;
+  const tpDistance = Math.min(rawTpDistance, maxTpDistance);
+  const tpPct = tpDistance / entry;
+
+  if (tpPct < minTpPct) {
+    return {
+      ok: false,
+      reason: "TP_DISTANCE_TOO_SMALL",
+      meta: { tpPct, minTpPct }
+    };
+  }
+
+  const sl =
+    side === "LONG"
+      ? entry - rawRiskDistance
+      : entry + rawRiskDistance;
+
+  const tp =
+    side === "LONG"
+      ? entry + tpDistance
+      : entry - tpDistance;
+
+  const rr = Math.abs(tp - entry) / Math.abs(entry - sl);
+
+  return {
+    ok: true,
+    sl,
+    tp,
+    rr,
+    riskDistance: rawRiskDistance,
+    tpDistance,
+    tpPct,
+    riskPct,
+    tpCapped: tpDistance < rawTpDistance
+  };
+};
+
 export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
   if (!Array.isArray(klines) || klines.length < 80) {
     return reject(cfg, "NOT_ENOUGH_KLINES", {
@@ -206,15 +364,15 @@ export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
   }
 
   const i = getLastClosedIndex(klines);
-  if (i < 50) {
+  if (i < 51) {
     return reject(cfg, "NO_USABLE_CLOSED_CANDLE", { symbol, tf, index: i });
   }
 
   const usable = klines.slice(0, i + 1);
-  const last = usable[usable.length - 1];
-  const prev = usable[usable.length - 2];
+  const confirmCandle = usable[usable.length - 1];
+  const setupCandle = usable[usable.length - 2];
 
-  if (!hasValidCandle(last) || !hasValidCandle(prev)) {
+  if (!hasValidCandle(confirmCandle) || !hasValidCandle(setupCandle)) {
     return reject(cfg, "BAD_CANDLE_DATA", { symbol, tf });
   }
 
@@ -250,7 +408,7 @@ export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
     return reject(cfg, "BAD_INDICATORS", { symbol, tf });
   }
 
-  const stats = candleStats(last);
+  const confirmStats = candleStats(confirmCandle);
 
   const minTrendStrength = getCfgNum(cfg, "minTrendStrength", 0.0028);
   const trendStrength = Math.abs(fast - slow) / entry;
@@ -287,30 +445,30 @@ export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
   }
 
   const minBodyRatio = getCfgNum(cfg, "minBodyRatio", 0.5);
-  if (stats.bodyRatio < minBodyRatio) {
+  if (confirmStats.bodyRatio < minBodyRatio) {
     return reject(cfg, "BODY_TOO_SMALL", {
       symbol,
       tf,
-      bodyRatio: stats.bodyRatio,
+      bodyRatio: confirmStats.bodyRatio,
       minBodyRatio
     });
   }
 
   const maxCandleAtrRange = getCfgNum(cfg, "maxCandleAtrRange", 2.4);
-  if (stats.range > maxCandleAtrRange * atrNow) {
+  if (confirmStats.range > maxCandleAtrRange * atrNow) {
     return reject(cfg, "CANDLE_RANGE_TOO_LARGE", {
       symbol,
       tf,
-      rangeAtr: stats.range / atrNow,
+      rangeAtr: confirmStats.range / atrNow,
       maxCandleAtrRange
     });
   }
 
   let side = null;
 
-  if (fast > slow && entry > fast && last.c > last.o) {
+  if (fast > slow && entry > fast) {
     side = "LONG";
-  } else if (fast < slow && entry < fast && last.c < last.o) {
+  } else if (fast < slow && entry < fast) {
     side = "SHORT";
   }
 
@@ -321,7 +479,7 @@ export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
       fast,
       slow,
       entry,
-      candleDirection: last.c >= last.o ? "UP" : "DOWN"
+      candleDirection: confirmCandle.c >= confirmCandle.o ? "UP" : "DOWN"
     });
   }
 
@@ -349,6 +507,32 @@ export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
     });
   }
 
+  if (!passedPullbackQuality({ side, candle: setupCandle, fast, atrNow, cfg })) {
+    return reject(cfg, "PULLBACK_MISSED", {
+      symbol,
+      tf,
+      side,
+      maxPullbackAtrMiss: getCfgNum(cfg, "maxPullbackAtrMiss", 0.35)
+    });
+  }
+
+  const confirmation = passedEntryConfirmation({
+    side,
+    setupCandle,
+    confirmCandle,
+    fast,
+    atrNow,
+    cfg
+  });
+
+  if (!confirmation.ok) {
+    return reject(cfg, confirmation.reason || "ENTRY_CONFIRMATION_FAILED", {
+      symbol,
+      tf,
+      side
+    });
+  }
+
   if (isOverextended({ entry, fast, atrNow, cfg })) {
     return reject(cfg, "ENTRY_OVEREXTENDED", {
       symbol,
@@ -359,63 +543,80 @@ export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
     });
   }
 
-  if (!passedPullbackQuality({ side, candle: last, fast, atrNow, cfg })) {
-    return reject(cfg, "PULLBACK_MISSED", {
-      symbol,
-      tf,
-      side,
-      maxPullbackAtrMiss: getCfgNum(cfg, "maxPullbackAtrMiss", 0.35)
-    });
-  }
-
   const maxBadWickRatio = getCfgNum(cfg, "maxBadWickRatio", 0.42);
 
-  if (side === "LONG" && stats.upperWickRatio > maxBadWickRatio) {
+  if (side === "LONG" && confirmStats.upperWickRatio > maxBadWickRatio) {
     return reject(cfg, "BAD_UPPER_WICK", {
       symbol,
       tf,
       side,
-      upperWickRatio: stats.upperWickRatio,
+      upperWickRatio: confirmStats.upperWickRatio,
       maxBadWickRatio
     });
   }
 
-  if (side === "SHORT" && stats.lowerWickRatio > maxBadWickRatio) {
+  if (side === "SHORT" && confirmStats.lowerWickRatio > maxBadWickRatio) {
     return reject(cfg, "BAD_LOWER_WICK", {
       symbol,
       tf,
       side,
-      lowerWickRatio: stats.lowerWickRatio,
+      lowerWickRatio: confirmStats.lowerWickRatio,
       maxBadWickRatio
     });
   }
 
-  const riskDistance = cfg.atrF * atrNow;
+  const rawRiskDistance = cfg.atrF * atrNow;
 
-  if (!isNum(riskDistance) || riskDistance <= 0) {
-    return reject(cfg, "BAD_RISK_DISTANCE", { symbol, tf, riskDistance });
+  if (!isNum(rawRiskDistance) || rawRiskDistance <= 0) {
+    return reject(cfg, "BAD_RISK_DISTANCE", { symbol, tf, riskDistance: rawRiskDistance });
   }
 
-  const sl = side === "LONG"
-    ? entry - riskDistance
-    : entry + riskDistance;
+  const levels = buildCappedLevels({
+    side,
+    entry,
+    rawRiskDistance,
+    cfg
+  });
 
-  const tp = side === "LONG"
-    ? entry + cfg.rr * riskDistance
-    : entry - cfg.rr * riskDistance;
-
-  const rr = Math.abs(tp - entry) / Math.abs(entry - sl);
-
-  if (!isNum(sl) || !isNum(tp) || !isNum(rr) || rr <= 0) {
-    return reject(cfg, "BAD_LEVELS", { symbol, tf, side, entry, sl, tp, rr });
+  if (!levels.ok) {
+    return reject(cfg, levels.reason, {
+      symbol,
+      tf,
+      side,
+      ...(levels.meta || {})
+    });
   }
 
-  if (side === "LONG" && !(sl < entry && tp > entry)) {
-    return reject(cfg, "BAD_LONG_LEVEL_GEOMETRY", { symbol, tf, entry, sl, tp });
+  if (!isNum(levels.sl) || !isNum(levels.tp) || !isNum(levels.rr) || levels.rr <= 0) {
+    return reject(cfg, "BAD_LEVELS", {
+      symbol,
+      tf,
+      side,
+      entry,
+      sl: levels.sl,
+      tp: levels.tp,
+      rr: levels.rr
+    });
   }
 
-  if (side === "SHORT" && !(sl > entry && tp < entry)) {
-    return reject(cfg, "BAD_SHORT_LEVEL_GEOMETRY", { symbol, tf, entry, sl, tp });
+  if (side === "LONG" && !(levels.sl < entry && levels.tp > entry)) {
+    return reject(cfg, "BAD_LONG_LEVEL_GEOMETRY", {
+      symbol,
+      tf,
+      entry,
+      sl: levels.sl,
+      tp: levels.tp
+    });
+  }
+
+  if (side === "SHORT" && !(levels.sl > entry && levels.tp < entry)) {
+    return reject(cfg, "BAD_SHORT_LEVEL_GEOMETRY", {
+      symbol,
+      tf,
+      entry,
+      sl: levels.sl,
+      tp: levels.tp
+    });
   }
 
   const { capitalUsd, qty } = resolveFixedPosition(entry);
@@ -432,15 +633,15 @@ export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
     status: "OPEN",
 
     entry,
-    sl,
-    tp,
-    rr,
+    sl: levels.sl,
+    tp: levels.tp,
+    rr: levels.rr,
 
     qty,
     capitalUsd,
-    riskDistance,
+    riskDistance: levels.riskDistance,
 
-    closeTime: last.ct,
+    closeTime: confirmCandle.ct,
     createdAt: ts,
     lastScanTs: ts,
 
@@ -448,6 +649,20 @@ export function buildSignal({ symbol, tf, klines, cfg, mtfKlines }) {
     mtfStrength: mtf.strength,
     trendStrength,
     atrPct,
+
+    entryModel: "PULLBACK_CONFIRMATION",
+    setupClose: setupCandle.c,
+    confirmClose: confirmCandle.c,
+
+    riskPct: levels.riskPct,
+    tpPct: levels.tpPct,
+    tpCapped: levels.tpCapped,
+
+    peakR: 0,
+    peakPnlUsdt: 0,
+    protectionStop: NaN,
+    protectionMode: null,
+    exitReason: null,
 
     lastLiveTs: NaN,
     live: NaN,

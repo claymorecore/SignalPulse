@@ -78,6 +78,10 @@ const normalizeCfg = (c) => {
     useMtfFilter: x.useMtfFilter !== false,
     mtfTf: String(x.mtfTf || "5m").trim(),
 
+    requireEntryConfirmation: x.requireEntryConfirmation !== false,
+    confirmRequireStructure: x.confirmRequireStructure !== false,
+    confirmBreakBufferAtr: Math.max(0, parseFloat(x.confirmBreakBufferAtr ?? 0.02) || 0.02),
+
     minTrendStrength: Math.max(0, parseFloat(x.minTrendStrength ?? 0.0028) || 0.0028),
     minMtfTrendStrength: Math.max(0, parseFloat(x.minMtfTrendStrength ?? 0.0018) || 0.0018),
 
@@ -91,6 +95,16 @@ const normalizeCfg = (c) => {
     maxEntryAtrFromFast: Math.max(0.2, parseFloat(x.maxEntryAtrFromFast ?? 1.25) || 1.25),
     maxPullbackAtrMiss: Math.max(0, parseFloat(x.maxPullbackAtrMiss ?? 0.35) || 0.35),
     maxSpawnDriftRisk: Math.max(0.05, parseFloat(x.maxSpawnDriftRisk ?? 0.3) || 0.3),
+
+    minRiskPct: Math.max(0, parseFloat(x.minRiskPct ?? 0.0025) || 0.0025),
+    maxRiskPct: Math.max(0.001, parseFloat(x.maxRiskPct ?? 0.05) || 0.05),
+    minTpPct: Math.max(0, parseFloat(x.minTpPct ?? 0.008) || 0.008),
+    maxTpPct: Math.max(0.002, parseFloat(x.maxTpPct ?? 0.035) || 0.035),
+
+    breakEvenTriggerR: Math.max(0.1, parseFloat(x.breakEvenTriggerR ?? 0.5) || 0.5),
+    breakEvenLockR: Math.max(0, parseFloat(x.breakEvenLockR ?? 0.05) || 0.05),
+    profitLockTriggerR: Math.max(0.2, parseFloat(x.profitLockTriggerR ?? 1.0) || 1.0),
+    profitLockR: Math.max(0.05, parseFloat(x.profitLockR ?? 0.35) || 0.35),
 
     rejectDebug: x.rejectDebug !== false,
     rejectFlushMs: clamp(parseInt(x.rejectFlushMs ?? 15_000, 10) || 15_000, 5_000, 120_000),
