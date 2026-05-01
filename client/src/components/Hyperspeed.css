@@ -1,0 +1,15 @@
+#lights {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+#lights canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
